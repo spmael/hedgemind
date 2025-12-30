@@ -10,11 +10,19 @@ from django.test import RequestFactory  # noqa: E402
 
 from libs.tenant_context import set_current_org_id  # noqa: E402
 from tests.factories import (  # noqa: E402
+    BondInstrumentFactory,
+    EquityInstrumentFactory,
+    InstrumentFactory,
+    InstrumentGroupFactory,
+    InstrumentTypeFactory,
+    IssuerFactory,
+    IssuerRatingFactory,
     OrganizationFactory,
     OrganizationMemberAdminFactory,
     OrganizationMemberAnalystFactory,
     OrganizationMemberFactory,
     OrganizationMemberViewerFactory,
+    PrivateAssetInstrumentFactory,
     UserFactory,
 )
 
@@ -111,3 +119,72 @@ def clear_org_context():
     yield
     # Clear after test
     set_current_org_id(None)
+
+
+# Reference Data Fixtures
+
+
+@pytest.fixture
+def instrument_group():
+    """Fixture to create an InstrumentGroup instance."""
+    return InstrumentGroupFactory()
+
+
+@pytest.fixture
+def instrument_type(instrument_group):
+    """Fixture to create an InstrumentType instance."""
+    return InstrumentTypeFactory(group=instrument_group)
+
+
+@pytest.fixture
+def issuer(org_context_with_org):
+    """Fixture to create an Issuer instance within organization context."""
+    return IssuerFactory()
+
+
+@pytest.fixture
+def issuer_rating(issuer):
+    """Fixture to create an IssuerRating instance."""
+    return IssuerRatingFactory(issuer=issuer)
+
+
+@pytest.fixture
+def instrument(org_context_with_org, instrument_group, instrument_type, issuer):
+    """Fixture to create an Instrument instance within organization context."""
+    return InstrumentFactory(
+        instrument_group=instrument_group,
+        instrument_type=instrument_type,
+        issuer=issuer,
+    )
+
+
+@pytest.fixture
+def bond_instrument(org_context_with_org, instrument_group, instrument_type, issuer):
+    """Fixture to create a bond Instrument instance."""
+    return BondInstrumentFactory(
+        instrument_group=instrument_group,
+        instrument_type=instrument_type,
+        issuer=issuer,
+    )
+
+
+@pytest.fixture
+def equity_instrument(org_context_with_org, instrument_group, instrument_type, issuer):
+    """Fixture to create an equity Instrument instance."""
+    return EquityInstrumentFactory(
+        instrument_group=instrument_group,
+        instrument_type=instrument_type,
+        issuer=issuer,
+    )
+
+
+@pytest.fixture
+def private_asset_instrument(
+    org_context_with_org, instrument_group, instrument_type, issuer
+):
+    """Fixture to create a private asset Instrument instance."""
+    return PrivateAssetInstrumentFactory(
+        instrument_group=instrument_group,
+        instrument_type=instrument_type,
+        issuer=issuer,
+    )

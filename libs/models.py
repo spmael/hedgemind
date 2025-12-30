@@ -29,7 +29,8 @@ class OrganizationQuerySet(QuerySet):
         org_id = get_current_org_id()
         if org_id is None:
             return self.none()
-        return self.filter(organization_id=org_id)
+        # Use super().filter() to avoid recursion with our overridden filter() method
+        return super().filter(organization_id=org_id)
 
     def all(self):
         """Override all() to filter by current organization."""
