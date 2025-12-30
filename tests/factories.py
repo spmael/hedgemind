@@ -3,13 +3,24 @@ Base factories for creating test data using Factory Boy.
 """
 
 from datetime import date
+from decimal import Decimal
 
 import factory
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.utils.text import slugify
+from djmoney.money import Money
 
 from apps.organizations.models import Organization, OrganizationMember, OrganizationRole
+from apps.portfolios.models import (
+    ImportSourceType,
+    ImportStatus,
+    Portfolio,
+    PortfolioGroup,
+    PortfolioImport,
+    PositionSnapshot,
+    ValuationSource,
+)
 from apps.reference_data.models import (
     Instrument,
     InstrumentGroup,
@@ -189,3 +200,134 @@ class PrivateAssetInstrumentFactory(InstrumentFactory):
 
     valuation_method = ValuationMethod.MANUAL_DECLARED
     sector = factory.Iterator(["Real Estate", "Private Equity", "Infrastructure"])
+
+
+# Portfolio Factories
+
+
+class PortfolioGroupFactory(factory.django.DjangoModelFactory):
+    """Factory for creating PortfolioGroup test instances."""
+
+    class Meta:
+        model = PortfolioGroup
+
+    name = factory.Sequence(lambda n: f"GRP{n:03d}")
+    description = factory.Faker("text", max_nb_chars=200)
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+class PortfolioFactory(factory.django.DjangoModelFactory):
+    """Factory for creating Portfolio test instances."""
+
+    class Meta:
+        model = Portfolio
+
+    name = factory.Sequence(lambda n: f"PORT{n:03d}")
+    full_name = factory.Faker("text", max_nb_chars=200)
+    base_currency = settings.DEFAULT_CURRENCY
+    group = factory.SubFactory(PortfolioGroupFactory)
+    mandate_type = factory.Iterator(
+        [
+            "Liquidity Management",
+            "Treasury",
+            "Investment",
+            "Reserve",
+            None,
+        ]
+    )
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+class PortfolioImportFactory(factory.django.DjangoModelFactory):
+    """Factory for creating PortfolioImport test instances."""
+
+    class Meta:
+        model = PortfolioImport
+
+    portfolio = factory.SubFactory(PortfolioFactory)
+    as_of_date = factory.LazyFunction(date.today)
+    source_type = ImportSourceType.MANUAL
+    status = ImportStatus.PENDING
+    rows_processed = 0
+    rows_total = 0
+
+    # Optional fields
+    mapping_json = None
+    error_message = None
+    inputs_hash = None
+    completed_at = None
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+    # Note: file field requires actual file upload in tests
+
+
+def _make_money(amount_range=(1000, 10000000), currency=None):
+    """Helper function to create Money objects for factories."""
+    import random
+
+    if currency is None:
+        currency = settings.DEFAULT_CURRENCY
+    amount = Decimal(str(random.uniform(amount_range[0], amount_range[1])))
+    return Money(amount, currency)
+
+
+class PositionSnapshotFactory(factory.django.DjangoModelFactory):
+    """Factory for creating PositionSnapshot test instances."""
+
+    class Meta:
+        model = PositionSnapshot
+
+    portfolio = factory.SubFactory(PortfolioFactory)
+    instrument = factory.SubFactory(InstrumentFactory)
+    quantity = factory.Faker(
+        "pydecimal", left_digits=10, right_digits=6, positive=True, max_value=1000000
+    )
+    book_value = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(1000, 10000000),
+            currency=(
+                obj.portfolio.base_currency
+                if obj.portfolio
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+    market_value = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(1000, 10000000),
+            currency=(
+                obj.portfolio.base_currency
+                if obj.portfolio
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+    price = factory.Faker(
+        "pydecimal", left_digits=10, right_digits=6, positive=True, max_value=10000
+    )
+    accrued_interest = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(0, 100000),
+            currency=(
+                obj.portfolio.base_currency
+                if obj.portfolio
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+    valuation_method = ValuationMethod.MARK_TO_MARKET
+    valuation_source = ValuationSource.MARKET
+    as_of_date = factory.LazyFunction(date.today)
+    last_valuation_date = factory.LazyFunction(date.today)
+
+    # Optional fields
+    portfolio_import = None
+    stale_after_days = None
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context

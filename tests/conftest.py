@@ -22,6 +22,10 @@ from tests.factories import (  # noqa: E402
     OrganizationMemberAnalystFactory,
     OrganizationMemberFactory,
     OrganizationMemberViewerFactory,
+    PortfolioFactory,
+    PortfolioGroupFactory,
+    PortfolioImportFactory,
+    PositionSnapshotFactory,
     PrivateAssetInstrumentFactory,
     UserFactory,
 )
@@ -188,3 +192,30 @@ def private_asset_instrument(
         instrument_type=instrument_type,
         issuer=issuer,
     )
+
+
+# Portfolio Fixtures
+
+
+@pytest.fixture
+def portfolio_group(org_context_with_org):
+    """Fixture to create a PortfolioGroup instance within organization context."""
+    return PortfolioGroupFactory()
+
+
+@pytest.fixture
+def portfolio(org_context_with_org, portfolio_group):
+    """Fixture to create a Portfolio instance within organization context."""
+    return PortfolioFactory(group=portfolio_group)
+
+
+@pytest.fixture
+def portfolio_import(org_context_with_org, portfolio):
+    """Fixture to create a PortfolioImport instance."""
+    return PortfolioImportFactory(portfolio=portfolio)
+
+
+@pytest.fixture
+def position_snapshot(org_context_with_org, portfolio, instrument):
+    """Fixture to create a PositionSnapshot instance."""
+    return PositionSnapshotFactory(portfolio=portfolio, instrument=instrument)
