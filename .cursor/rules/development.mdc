@@ -1,0 +1,447 @@
+---
+alwaysApply: true
+---
+# Hedgemind Development Rules
+
+## Project Structure
+
+### Directory Organization
+```
+hedgemind/
+├── apps/              # Django applications (business logic)
+│   ├── accounts/      # User accounts management
+│   ├── analytics/     # Analytics and metrics
+│   ├── audit/         # Audit logging
+│   ├── etl/           # ETL pipelines and orchestration
+│   ├── organizations/ # Multi-tenant organization management
+│   ├── portfolios/    # Portfolio management
+│   ├── reference_data/# Reference data (securities, market data)
+│   └── reports/       # Report generation
+├── config/            # Django project configuration
+│   └── settings/      # Environment-specific settings (base, dev, prod, test)
+├── libs/              # Reusable libraries and utilities
+│   ├── models.py      # Base model mixins (OrganizationOwnedModel)
+│   ├── tenant_context.py # Organization context management
+│   └── organization_query.py # Organization query helpers
+├── tests/             # Centralized test suite
+│   ├── conftest.py    # Shared pytest fixtures
+│   ├── factories.py   # Factory Boy factories
+│   └── [app_name]/    # App-specific tests
+├── scripts/           # Utility scripts
+├── bugs/              # Bug tracking documentation
+└── .cursor/rules/     # Development rules (this file)
+```
+
+### App Structure
+Each Django app should follow this structure:
+```
+apps/[app_name]/
+├── __init__.py
+├── apps.py            # AppConfig with name = "apps.[app_name]"
+├── models.py          # Models (use OrganizationOwnedModel for business data)
+├── admin.py           # Django admin configuration
+├── views.py           # View functions/classes
+├── urls.py            # URL routing (if needed)
+├── migrations/       # Database migrations
+└── tests.py          # App-specific tests (or use tests/ folder)
+```
+
+## Code Documentation
+
+### Module-Level Docstrings
+Every Python module MUST start with a descriptive multiline docstring:
+
+```python
+"""
+Brief description of the module's purpose.
+
+This module provides [detailed explanation of what the module does,
+its key components, and how it fits into the overall system].
+
+Key components:
+- Component 1: Description
+- Component 2: Description
+
+Usage example:
+    from apps.example import ExampleClass
+    instance = ExampleClass()
+"""
+```
+
+### Class Docstrings
+All classes MUST have comprehensive docstrings following Google/NumPy style:
+
+```python
+class ExampleModel(OrganizationOwnedModel):
+    """
+    Brief one-line description.
+    
+    Longer description explaining the purpose, behavior, and key features
+    of this class. Include any important design decisions or constraints.
+    
+    Attributes:
+        field_name (Type): Description of the field.
+        another_field (Type): Description.
+    
+    Example:
+        >>> instance = ExampleModel.objects.create(name="Test")
+        >>> print(instance.name)
+        Test
+    
+    Note:
+        Any important notes about usage, limitations, or gotchas.
+    """
+```
+
+### Function/Method Docstrings
+All functions and methods MUST have docstrings:
+
+```python
+def function_name(param1: Type, param2: Type) -> ReturnType:
+    """
+    Brief one-line description.
+    
+    Detailed description of what the function does, including:
+    - Purpose and behavior
+    - Important side effects
+    - Any exceptions that may be raised
+    
+    Args:
+        param1 (Type): Description of param1.
+        param2 (Type): Description of param2.
+    
+    Returns:
+        ReturnType: Description of return value.
+    
+    Raises:
+        ValueError: When param1 is invalid.
+        DoesNotExist: When object not found.
+    
+    Example:
+        >>> result = function_name("test", 123)
+        >>> print(result)
+        "result"
+    """
+```
+
+### Inline Comments
+- Use comments to explain "why", not "what"
+- Complex logic should have explanatory comments
+- TODO comments should include issue/ticket numbers when possible
+
+## Models
+
+### Organization Scoping Rules
+
+**MUST use `OrganizationOwnedModel` mixin for:**
+- All business data models (Portfolio, Security, Report, AnalyticsEvent, etc.)
+- Any model that belongs to an organization
+- Models that should be automatically filtered by organization context
+
+**MUST NOT use `OrganizationOwnedModel` mixin for:**
+- `Organization` model (it IS the organization)
+- `OrganizationMember` model (system-level relationship table, needed before context is set)
+- `User` model (system-level authentication)
+- Any model that needs cross-organization queries
+
+### Model Definition Pattern
+
+```python
+from __future__ import annotations
+
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+from libs.models import OrganizationOwnedModel
+
+
+class Portfolio(OrganizationOwnedModel):
+    """
+    Portfolio model representing an investment portfolio.
+    
+    Automatically scoped to the current organization via OrganizationOwnedModel.
+    All queries are automatically filtered by organization context.
+    """
+    
+    name = models.CharField(_("Name"), max_length=255)
+    description = models.TextField(_("Description"), blank=True)
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    
+    class Meta:
+        verbose_name = _("Portfolio")
+        verbose_name_plural = _("Portfolios")
+        indexes = [
+            models.Index(fields=["organization", "name"]),
+        ]
+    
+    def __str__(self) -> str:
+        return self.name
+```
+
+### Model Best Practices
+- Always use `_()` for verbose names (internationalization)
+- Include `created_at` and `updated_at` timestamps where appropriate
+- Add database indexes for frequently queried fields
+- Use `unique_together` for multi-field uniqueness constraints
+- Implement `__str__` method for all models
+- Use type hints (`from __future__ import annotations`)
+
+## Middleware
+
+### OrganizationContextMiddleware
+- **DO NOT MODIFY** the middleware structure without discussion
+- It handles organization context resolution and must remain stable
+- If changes are needed, ensure backward compatibility
+
+## Views and URLs
+
+### View Patterns
+- Use function-based views for simple endpoints
+- Use class-based views for complex CRUD operations
+- Always include authentication/authorization decorators
+- Return JSON responses for API endpoints
+
+### URL Patterns
+- Use `apps/[app_name]/urls.py` for app-specific routing
+- Include in main `config/urls.py` with namespace
+- Use descriptive URL patterns: `/api/organizations/switch/<org_id>/`
+
+Example:
+```python
+# apps/organizations/urls.py
+from django.urls import path
+from apps.organizations import views
+
+app_name = "organizations"
+
+urlpatterns = [
+    path("switch/<int:org_id>/", views.switch_organization, name="switch"),
+]
+```
+
+## Testing
+
+### Test Organization
+- All tests in `tests/` folder, organized by app
+- Use Factory Boy for test data generation
+- Shared fixtures in `tests/conftest.py`
+- Test factories in `tests/factories.py`
+
+### Test Naming
+- Files: `test_*.py`
+- Classes: `Test*`
+- Functions: `test_*`
+
+### Test Coverage
+- Aim for 80%+ coverage on business logic
+- Test organization isolation for all scoped models
+- Test edge cases and error conditions
+
+### Test Example
+```python
+import pytest
+from libs.tenant_context import organization_context
+from tests.factories import OrganizationFactory, PortfolioFactory
+
+class TestPortfolio:
+    """Test cases for Portfolio model."""
+    
+    def test_portfolio_isolation(self, organization):
+        """Test that portfolios are isolated by organization."""
+        org1 = organization
+        org2 = OrganizationFactory()
+        
+        with organization_context(org1.id):
+            portfolio1 = PortfolioFactory()
+        
+        with organization_context(org2.id):
+            portfolio2 = PortfolioFactory()
+        
+        # Verify isolation
+        with organization_context(org1.id):
+            assert portfolio1 in Portfolio.objects.all()
+            assert portfolio2 not in Portfolio.objects.all()
+```
+
+## ETL and Celery Tasks
+
+### Task Definition
+- Use `@shared_task` decorator
+- For tasks that need org context, use `bind=True` and pass `org_id` explicitly
+- Always use `organization_context()` context manager inside tasks
+- Never rely on middleware context in Celery workers
+
+### Task Pattern
+```python
+from celery import shared_task
+from libs.tenant_context import organization_context
+
+@shared_task(bind=True)
+def process_data_task(self, org_id: int, data: dict):
+    """
+    Process data for a specific organization.
+    
+    Args:
+        org_id: Organization ID (explicit, not from context)
+        data: Data to process
+    """
+    with organization_context(org_id):
+        # Task logic here
+        pass
+```
+
+## Code Quality
+
+### Type Hints
+- Use type hints for all function parameters and return types
+- Use `from __future__ import annotations` at top of files
+- Use `Optional[Type]` for nullable values
+- Use `list[Type]`, `dict[str, Type]` for collections
+
+### Import Organization
+1. Standard library imports
+2. Third-party imports
+3. Django imports
+4. Local application imports
+5. Relative imports (if needed)
+
+Example:
+```python
+from __future__ import annotations
+
+import os
+from datetime import date
+from typing import Optional
+
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+
+from libs.models import OrganizationOwnedModel
+from apps.organizations.models import Organization
+```
+
+### Linting
+- Use Ruff for linting (configured in `pyproject.toml`)
+- Use Black for code formatting (configured in `pyproject.toml`)
+- Fix all linting errors before committing
+- Suppress warnings only when necessary with `# noqa: CODE`
+
+## Environment Variables
+
+### Configuration
+- All configuration via environment variables
+- Use `.env.example` as template
+- Never commit `.env` files
+- Use `python-dotenv` to load environment variables
+
+### Settings Structure
+- `config/settings/base.py` - Base settings
+- `config/settings/dev.py` - Development overrides
+- `config/settings/prod.py` - Production overrides
+- `config/settings/test.py` - Test-specific settings
+
+## Security
+
+### Multi-Tenant Security
+- Always validate organization membership before operations
+- Never trust client-provided organization IDs without validation
+- Use middleware to set organization context
+- Never bypass organization scoping in user-facing code
+
+### Authentication/Authorization
+- Use Django's authentication system
+- Implement role-based access control (RBAC) via OrganizationMember roles
+- Validate permissions at view level
+- Use `@login_required` decorator for protected views
+
+## Database
+
+### Migrations
+- Always create migrations for model changes
+- Review migration SQL before applying
+- Test migrations on development database first
+- Never edit existing migrations (create new ones)
+
+### Query Optimization
+- Use `select_related()` for ForeignKey relationships
+- Use `prefetch_related()` for ManyToMany/Reverse ForeignKey
+- Add database indexes for frequently queried fields
+- Use `only()` and `defer()` to limit fields when appropriate
+
+## Error Handling
+
+### Exception Handling
+- Use specific exception types (not bare `except:`)
+- Log errors with appropriate context
+- Return meaningful error messages to users
+- Use Django's built-in exceptions where appropriate
+
+### Validation
+- Use Django model validation (`clean()` method)
+- Validate at form/serializer level
+- Validate at view level for API endpoints
+- Return clear error messages
+
+## Git Workflow
+
+### Commit Messages
+- Use descriptive commit messages
+- Reference issue/ticket numbers when applicable
+- Follow conventional commits format when possible
+
+### Branching
+- Use feature branches for new development
+- Keep main/master branch stable
+- Review code before merging
+
+## Performance
+
+### Caching
+- Use Django's cache framework for expensive operations
+- Cache organization context when appropriate
+- Invalidate cache on data updates
+
+### Database
+- Use connection pooling (configured via `CONN_MAX_AGE`)
+- Monitor slow queries
+- Use database indexes strategically
+
+## Documentation
+
+### Code Comments
+- Explain "why", not "what"
+- Document complex algorithms
+- Include examples for non-obvious code
+
+### README Files
+- Keep README files updated
+- Include setup instructions
+- Document environment variables
+- Include examples
+
+## Additional Rules
+
+### Celery Tasks
+- Always pass `org_id` explicitly (never rely on middleware)
+- Use `organization_context()` context manager
+- Handle task failures gracefully
+- Log task execution
+
+### API Endpoints
+- Return consistent JSON response format
+- Use appropriate HTTP status codes
+- Include error details in error responses
+- Version APIs when making breaking changes
+
+### Internationalization
+- Use `gettext_lazy` for all user-facing strings
+- Provide translations for verbose names
+- Support multiple languages (currently: en, fr)
+
+### Logging
+- Use appropriate log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+- Include context in log messages
+- Don't log sensitive information (passwords, tokens)
+- Use structured logging when possible
+

@@ -1,0 +1,516 @@
+---
+alwaysApply: true
+---
+# Hedgemind Project Definition
+
+**Product:** Regional Portfolio & Risk Intelligence Platform (Institutional-first)
+
+## What Hedgemind Is
+
+### Core Identity
+
+Hedgemind is a **decision intelligence platform** designed for institutional users to understand, analyze, and defend their portfolio risk positions. It is not a trading platform, execution system, or retail investment tool.
+
+### Primary Users (MVP Focus)
+
+The platform is built **institution-first** for:
+
+- **Asset managers** - Portfolio risk oversight and reporting
+- **Bank treasury / ALM desks** - Asset-liability risk management
+- **Pension & insurance investment teams** - Regulatory and fiduciary risk reporting
+
+### Core Value Proposition
+
+Hedgemind helps institutional users understand:
+
+1. **Where risk really sits**
+   - Concentration risk (issuer, country, asset class, currency)
+   - Liquidity risk
+   - Sovereign risk
+   - FX exposure
+   - Not textbook volatility metrics
+
+2. **What can realistically break**
+   - Fragility under stress
+   - Losses that are not reversible
+   - Structural weaknesses
+
+3. **How exposed they are**
+   - Issuer concentration
+   - Country exposure
+   - Instrument-level breakdown
+   - Currency exposure
+
+4. **Whether decisions are defensible**
+   - To boards
+   - To regulators
+   - To auditors
+
+### Essential Questions the Platform Must Answer
+
+If the platform cannot help answer these questions, it is not useful:
+
+- What is our single biggest portfolio risk today?
+- If a shock happens, what fails first?
+- Where are we over-concentrated without realizing it?
+- Can we explain this portfolio in one page?
+
+### MVP Capabilities
+
+#### 1. Portfolio Ingestion (Foundational)
+- ✅ Upload via Excel / CSV
+- ✅ Manual data entry allowed
+- ❌ No live trading integration
+- ❌ No custody integration
+- ❌ No APIs initially (Phase 2)
+
+#### 2. Exposure Engine (Core Value)
+- Exposure by issuer
+- Exposure by country
+- Exposure by asset class
+- Exposure by currency
+- Simple concentration thresholds
+
+#### 3. Context-Aware Risk Analytics (Minimal but Honest)
+- ✅ Concentration risk
+- ✅ FX exposure
+- ✅ Duration / rate sensitivity
+- ✅ Deterministic stress scenarios:
+  - Rates +100 / +200 bps
+  - Sovereign downgrade
+  - FX regime stress
+
+#### 4. Reporting (The Product Itself)
+- Portfolio overview
+- Risk summary
+- Stress scenario output
+- **PDF export** (critical - if it doesn't export, it doesn't exist)
+
+### Performance Evidence (What Proves Understanding)
+
+Users must be able to:
+
+1. Generate a **1-page portfolio snapshot** (printable, board-ready)
+2. Identify:
+   - Top 5 issuer exposures
+   - Top 3 structural risks
+3. Run at least one stress scenario
+4. Defend portfolio positioning in a committee discussion
+
+**⚠️ Critical:** Dashboards without printable, board-ready outputs do not count as evidence of understanding.
+
+## What Hedgemind Is NOT
+
+### Out of Scope for MVP (Hard Boundaries)
+
+The following are **explicitly excluded** from MVP to maintain focus and avoid regulatory/technical debt:
+
+- 🚫 **Retail onboarding** - Retail users are not primary learners at MVP
+- 🚫 **Execution / trading** - This is a decision intelligence product, not a trading product
+- 🚫 **Real-time pricing** - Manual upload is sufficient for MVP
+- 🚫 **AI positioning** - Not part of MVP scope
+- 🚫 **Multi-country regulatory automation** - Phase 2+ feature
+- 🚫 **Mobile-first UX** - Desktop/web-first for institutional users
+
+### Excluded Risk Methodologies (MVP)
+
+The platform explicitly avoids false precision in illiquid markets:
+
+- ❌ Monte Carlo simulations
+- ❌ Black-Scholes option pricing
+- ❌ Complex VaR models
+
+**⚠️ Design Principle:** False precision is worse than simplicity in illiquid markets. **Honesty over sophistication.**
+
+### What It Is Not by Product Type
+
+- **Not a trading platform** - No execution capabilities
+- **Not a custody system** - No asset custody or settlement
+- **Not a retail investment app** - Institutional focus, not consumer-facing
+- **Not a real-time market data platform** - Batch processing, manual upload
+- **Not an AI advisor** - Decision intelligence, not automated recommendations
+
+## Design Principles (Guardrails)
+
+These principles guide all development decisions:
+
+1. **Honesty over sophistication**
+   - Simple, defensible analytics over complex black-box models
+   - Transparent methodology over impressive but questionable precision
+
+2. **Stress before optimization**
+   - Focus on understanding fragility under stress
+   - Identify what breaks before optimizing returns
+
+3. **Explainability over black boxes**
+   - All outputs must be explainable to boards, regulators, and auditors
+   - Clear methodology over proprietary algorithms
+
+4. **PDF > Dashboard**
+   - Printable, exportable outputs are the product
+   - Dashboards are tools to generate reports, not the end goal
+
+## Planned Evolution (Post-MVP)
+
+### Phase 2
+- API ingestion (replacing manual upload)
+- Institution-defined model portfolios
+- Compliance rules engine
+
+### Phase 3
+- Retail read-only portfolio views (consumers of institutional intelligence, not parallel product)
+- Risk explained in plain language
+- Benchmark comparisons
+
+**Note:** Retail becomes a consumer of institutional intelligence, not a parallel product track.
+
+## Success Criteria & Reality Check
+
+Hedgemind has failed its mission if at MVP:
+
+- ❌ Institutions cannot defend decisions using platform outputs
+- ❌ Regulators cannot understand or trust the outputs
+- ❌ Risk is dressed up instead of clarified
+- ❌ Reports are not board-ready or printable
+
+**The product has failed regardless of UI polish or tech stack sophistication if these core requirements are not met.**
+
+## Product Philosophy
+
+This is a **decision intelligence product** built on the principle that institutional users need clarity, defensibility, and transparency in risk analysis—not complexity for complexity's sake. The platform succeeds when users can confidently answer tough questions about their portfolio risk to stakeholders who matter.
+
+## Technical Architecture (Django/Python-first)
+
+### Panel View (Architectural Guardrails)
+
+**Architect:** Django is fine, but don't build a monolith that mixes "retail app UX" + "institution analytics engine" from day 1. You'll drown in coupling.
+
+**Quant/Risk:** Start with deterministic risk + exposures. Don't lock yourself into VaR tooling or tick data dependencies.
+
+**Platform/SRE:** Cloud + queue is okay, but avoid premature Kubernetes. Your biggest scaling risk early is data quality, not compute.
+
+**Product:** Your MVP "product" is PDF-grade reporting + repeatable ingestion, not dashboards.
+
+### High-Level Components
+
+#### Web App (Django)
+- Auth, orgs, permissions
+- Uploads, portfolio views, reports listing
+- Admin + configuration (limits, thresholds, mapping)
+
+#### Analytics Engine (Python module inside repo at first)
+- Pure-Python functions/classes
+- Takes normalized holdings + market data snapshots
+- Outputs exposures, sensitivities, stress results
+- Produces "report schema" (JSON) that the report renderer uses
+
+#### Async Jobs (Celery or RQ)
+- Heavy steps: file parsing, valuation, scenario runs, PDF generation
+- Keeps UI fast and avoids request timeouts
+
+#### Data Layer
+- PostgreSQL (source of truth)
+- S3-compatible object storage (uploads + generated PDFs)
+- Optional: Redis for caching + queue backend
+
+#### Market & Reference Data Service (simple at MVP)
+- Start manual / file-based
+- Later integrate BVMAC, BEAC FX, yield curves, ratings, issuer master
+
+### MVP Data Flow (End-to-End)
+
+**A) Upload**
+- User uploads CSV/XLSX → stored in object storage
+- Create PortfolioImport record (status = PENDING)
+
+**B) Parse & Normalize (async)**
+- Job reads file → validates → maps columns
+- Creates normalized Holding records (or a staged table)
+- Errors go to ImportError table (line-level)
+
+**C) Analytics Run (async)**
+- Load latest market data snapshot (prices/FX/curves)
+- Compute:
+  - Exposures (issuer/country/ccy/asset class)
+  - Concentration thresholds
+  - Duration & DV01 (if bonds)
+  - Stress scenarios (deterministic shocks)
+- Persist results as versioned AnalyticsRun + Metrics JSON
+
+**D) Report**
+- Render PDF from stored JSON results (async)
+- Persist Report record + PDF file link
+
+**E) UI**
+- User views portfolio + runs + downloads PDF
+
+### Django App Structure (Recommended)
+
+Create a project with apps that mirror boundaries:
+
+- `accounts` (users, MFA optional, org membership)
+- `organizations` (tenanting, roles)
+- `portfolios` (portfolios, holdings, positions, imports)
+- `reference_data` (instruments, issuers, mappings, country, currency, curves)
+- `analytics` (runs, results, scenario definitions)
+- `reports` (templates, report instances, exports)
+- `audit` (immutable audit log)
+
+**⚠️ Pushback:** Don't hide everything in one core app. You'll regret it when you add retail later.
+
+### Multi-Tenancy (Institution Clients)
+
+**MVP:** Single DB, tenant via organization_id foreign key everywhere.
+
+- Organization
+- OrgMember with role (ADMIN, ANALYST, VIEWER)
+- Row-level filtering in querysets
+- Add database constraints and tests to prevent leakage
+
+**Later (if needed):** Schema-per-tenant or separate DB per tier—not now.
+
+### Core Domain Model (Minimal but Extensible)
+
+#### Reference Data
+- `Instrument` (isin/ticker, type, currency, issuer, country, sector, maturity, coupon, etc.)
+- `Issuer` (name, country, group, rating optional)
+- `FXRate` (base, quote, date, rate, source)
+- `YieldCurvePoint` (currency, tenor, date, rate) — optional MVP
+
+#### Portfolio Data
+- `Portfolio` (org, base_currency, name, mandate_type)
+- `PortfolioImport` (portfolio, file, mapping_json, status)
+- `Holding` (portfolio, instrument, quantity, cost, market_value, as_of_date)
+
+#### Analytics
+- `Scenario` (name, definition_json: shocks)
+- `AnalyticsRun` (portfolio, as_of, scenario_set, status, inputs_hash)
+- `AnalyticsResult` (run, result_json, summary fields for indexing/search)
+
+#### Reporting
+- `ReportTemplate` (name, version, layout config)
+- `Report` (run, template, pdf_file, status)
+
+#### Audit
+- `AuditEvent` (org, actor, action, object_type, object_id, metadata_json, created_at)
+- Make audit append-only.
+
+### Analytics Engine Design (Keep It Clean)
+
+Implement as a pure module: `hedgemind_risk_engine/`
+
+Suggested modules:
+- `ingestion/` (normalize holdings, mapping)
+- `pricing/` (apply FX, price lookups)
+- `exposures/` (group-bys + concentration)
+- `fixed_income/` (duration/DV01 calculations)
+- `stress/` (deterministic shock application)
+- `reporting_schema/` (produce stable JSON schema)
+
+**Why this matters:**
+- You can unit test it without Django
+- Later you can split it into a microservice if needed (FastAPI), without rewriting logic
+
+**⚠️ Pushback:** Don't embed analytics deeply inside Django models. Keep it functional and testable.
+
+### Async + Reliability
+
+Celery (recommended) with Redis as broker for MVP.
+
+Job types:
+- `parse_import(import_id)`
+- `run_analytics(portfolio_id, as_of, scenario_set_id)`
+- `generate_report(analytics_run_id, template_id)`
+
+Add:
+- Retries with backoff (for transient failures)
+- Idempotency via inputs_hash so reruns don't duplicate
+- Status transitions: PENDING → RUNNING → SUCCESS/FAILED
+
+### Reporting (PDF) Approach in Python
+
+**Option 1: HTML → PDF (recommended for speed)**
+- Create HTML templates (Django templates or Jinja2)
+- Render using a PDF engine (wkhtmltopdf or WeasyPrint)
+- Store PDFs in S3-compatible storage
+
+**Option 2: ReportLab (fine, but slower to iterate)**
+- Programmatic layout; more work to polish
+- Good if you need very strict formatting
+
+Given MVP goal: **Option 1.**
+
+### Integration Points (Planned, Not Required at MVP)
+
+Design adapters now (interfaces), implement later.
+
+`MarketDataProvider` interface:
+- `get_fx(date)`
+- `get_prices(date)`
+- `get_yield_curve(date, currency)`
+
+Providers later:
+- BEAC FX scraper
+- BVMAC prices
+- Manual upload provider
+
+This lets you start with "CSV market data snapshots" and graduate smoothly.
+
+### Security & Compliance Baseline
+
+Minimum set for institutional trust:
+- MFA for admins (optional at MVP but recommended)
+- Strong role-based access
+- Audit log append-only
+- Encryption at rest (cloud-managed)
+- Signed URLs for PDF downloads
+- Data export tracking (who downloaded which report)
+
+**⚠️ Pushback:** A "risk platform" without audit is dead on arrival for institutions.
+
+### Deployment (Simple and Sane)
+
+- App: Django + Gunicorn
+- DB: Postgres
+- Cache/Broker: Redis
+- Storage: S3-compatible (AWS S3, Cloudflare R2, etc.)
+- Workers: Celery workers
+- Scheduler: Celery beat (or cron) for nightly refresh
+
+Avoid Kubernetes until you have real load.
+
+## Instrument Types & Valuation
+
+### Supported Instrument Types (MVP)
+
+- ✅ **Bonds** - Fixed income securities with duration/DV01 calculations
+- ✅ **Equity** - Publicly traded equities
+- ✅ **Deposits** - Bank deposits and cash equivalents
+- ✅ **Mutual Funds** - Fund holdings with NAV-based valuation
+- ✅ **Private Assets** - Real estate, private equity, infrastructure (see below)
+
+### Currency & Frequency
+
+- **Multi-currency support** from day one (model-level, UI can be simplified)
+- **Daily frequency** - Daily as-of snapshots for public assets
+- Base currency support: XAF and multi-currency portfolios
+
+### Private Assets Valuation (Critical Architecture Decision)
+
+**Strategic Reality:** Institutions in Central Africa hold real estate, private equity stakes, infrastructure projects, and strategic participations. However, trying to value private assets like public ones at MVP is a category error.
+
+**⚠️ Key Principle:** Private assets are not a pricing problem, they are a governance + documentation problem.
+
+#### How Institutions Actually Treat Private Assets
+
+In practice, institutions:
+- Revalue private assets quarterly or annually
+- Use external valuers, internal committees, conservative assumptions
+- Care more about exposure, illiquidity, and concentration than mark-to-market precision
+
+#### Correct Product Framing
+
+What institutions need to understand about private assets:
+- ✅ How much of the portfolio is illiquid, non-mark-to-market, subjective, long-duration
+- ✅ How private assets affect concentration risk, liquidity risk, stress resilience
+- ❌ **NOT** "Exact fair value today"
+
+#### Architectural Decision: Separate Valuation from Risk Classification
+
+**Public Assets:**
+- Daily frequency
+- Market-based pricing
+- FX + curves + prices
+
+**Private Assets:**
+- Declared value, not calculated value
+- Low-frequency updates
+- Strong metadata
+
+This keeps the system honest and defensible.
+
+#### ValuationMethod Concept
+
+Each holding must explicitly declare how it is valued:
+
+- `MARK_TO_MARKET` - Public assets with market prices
+- `MARK_TO_MODEL` - Modeled valuations (future use)
+- `EXTERNAL_APPRAISAL` - Third-party valuation
+- `MANUAL_DECLARED` - Manual entry by institution
+
+**⚠️ Pushback:** Never silently "calculate" a private asset value.
+
+#### Private Asset Data Model
+
+**Instrument subtype:** `PrivateAsset`
+
+Key fields:
+- **Asset type:** Real estate, Private equity, Infrastructure, Strategic stake
+- **Ownership %**
+- **Valuation method** (enum)
+- **Last valuation date**
+- **Valuation source:** External firm, Internal committee, Auditor
+- **Valuation frequency:** Annual, Quarterly, Ad-hoc
+- **Liquidity horizon** (years)
+
+This metadata is more valuable than fake pricing.
+
+#### Valuation Storage
+
+For private assets:
+- Store `declared_value`
+- Store `valuation_confidence` (low / medium / high)
+- Store `as_of_date`
+- **No daily recomputation**
+
+Daily portfolio valuation = Public MTM + Last Known Private Value
+
+This is how institutions already operate.
+
+#### Risk Treatment (Where You Add Real Value)
+
+Private assets feed into risk via:
+
+**A) Concentration Risk**
+- % of portfolio in private assets
+- Exposure to single project / issuer
+
+**B) Liquidity Risk**
+- Time-to-exit buckets: <1 year, 1–3 years, 3–5 years, 5+ years
+
+**C) Stress Scenarios (Simple, Honest)**
+- Instead of pricing: Haircuts (-20%, -30%, -50%)
+- Liquidity freeze scenarios: "Cannot be liquidated under stress"
+
+**⚠️ Pushback:** Stress haircuts are more credible than fake DCF models.
+
+#### Reporting Transparency
+
+Reports must explicitly state:
+> "Private assets are valued using declared or external appraisals and are not marked to market daily."
+
+This transparency:
+- Protects you legally
+- Builds regulator trust
+- Differentiates you from naive fintechs
+
+#### What NOT to Do (Hard No)
+
+🚫 Automated DCF at MVP  
+🚫 Discount rate engines  
+🚫 Comparable multiples databases  
+🚫 AI valuation claims
+
+These are politically sensitive, data-poor, and litigation-prone.
+
+#### Panel Verdict
+
+Private assets absolutely belong in the platform, but:
+- As declared-value instruments
+- With strong metadata
+- Used for risk & exposure, not pseudo-pricing
+
+This aligns with:
+- Understanding > illusion (UbD)
+- Institutional reality
+- Regulatory defensibility
