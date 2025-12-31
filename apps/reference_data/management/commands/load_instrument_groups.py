@@ -27,8 +27,20 @@ class Command(BaseCommand):
     """
     Management command to load canonical instrument groups.
 
-    This command is idempotent and creates audit log entries for all operations.
-    Groups are loaded as global reference data (shared across all organizations).
+    This module provides a Django management command for loading
+    the industry-standard instrument groups (EQUITY, FIXED_INCOME,
+    CASH_EQUIVALENT, FUND, PRIVATE_ASSET, DERIVATIVE, OTHER) into the database
+    as global reference data shared across all organizations.
+
+    Key components:
+    - Idempotent group loader: Ensures all required groups exist and updates as needed.
+    - Audit log integration: Records audit entries for created/updated groups.
+    - CLI options: Supports --dry-run for preview and --actor-id for audit attribution.
+
+    Usage example:
+        python manage.py load_instrument_groups
+        python manage.py load_instrument_groups --dry-run
+        python manage.py load_instrument_groups --actor-id 42
     """
 
     help = "Load canonical instrument groups (idempotent, global reference data)"

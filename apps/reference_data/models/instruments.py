@@ -1,17 +1,7 @@
 """
-Reference data models for securities, issuers, and market data.
+Instrument models.
 
-This module provides the core reference data models that support portfolio
-management and risk analytics. All business reference data is scoped to
-organizations to support multi-tenant isolation.
-
-Key components:
-- Issuer: Entity that issues securities (governments, corporations, etc.)
-- Instrument: Financial instruments (bonds, equity, deposits, funds, etc.)
-- FXRate: Foreign exchange rates for currency conversion
-- YieldCurvePoint: Yield curve data points for fixed income valuation
-
-All models use OrganizationOwnedModel to ensure automatic organization scoping.
+Models for financial instruments, instrument groups, and instrument types.
 """
 
 from __future__ import annotations
@@ -22,147 +12,9 @@ from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 from djmoney.models.fields import CurrencyField
 
+from apps.reference_data.models.choices import FundCategory, ValuationMethod
+from apps.reference_data.models.issuers import Issuer
 from libs.models import OrganizationOwnedModel
-
-
-class Issuer(OrganizationOwnedModel):
-    """
-    Issuer model representing entities that issue financial instruments.
-
-    Issuers can be governments, corporations, financial institutions, or other
-    entities that issue securities. This model supports issuer-level exposure
-    analysis and concentration risk calculations.
-
-    Attributes:
-        name (str): Full legal name of the issuer.
-        short_name (str, optional): Short name or abbreviation.
-        country (str): Country code of the issuer's domicile.
-        issuer_group (str, optional): Group classification (e.g., "Sovereign", "Corporate").
-        rating (str, optional): Credit rating (e.g., "AAA", "BB+").
-        rating_agency (str, optional): Rating agency that provided the rating.
-        is_active (bool): Whether this issuer is currently active.
-        created_at (datetime): When the issuer record was created.
-        updated_at (datetime): When the issuer record was last updated.
-
-    Example:
-        >>> issuer = Issuer.objects.create(
-        ...     name="Republic of Cameroon",
-        ...     country="CM",
-        ...     issuer_group="Sovereign"
-        ... )
-        >>> print(issuer.name)
-        Republic of Cameroon
-    """
-
-    name = models.CharField(_("Name"), max_length=255)
-    short_name = models.CharField(
-        _("Short Name"), max_length=255, blank=True, null=True
-    )
-    country = CountryField(_("Country"), max_length=2, blank=True, null=True)
-    issuer_group = models.CharField(
-        _("Issuer Group"),
-        max_length=255,
-        blank=True,
-        null=True,
-        help_text="Group classification (e.g., 'Sovereign', 'Corporate')",
-    )
-    is_active = models.BooleanField(_("Is Active"), default=True)
-    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
-    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
-
-    class Meta:
-        verbose_name = _("Issuer")
-        verbose_name_plural = _("Issuers")
-        indexes = [
-            models.Index(fields=["organization", "name"]),
-            models.Index(fields=["organization", "country"]),
-            models.Index(fields=["organization", "issuer_group"]),
-        ]
-        unique_together = [["organization", "name"]]
-
-    def __str__(self) -> str:
-        return self.name
-
-
-class IssuerRating(models.Model):
-    """
-    Represents a credit rating assigned to an Issuer by a specific rating agency at a point in time.
-
-    Supports multiple agencies rating the same issuer, and maintains the historical evolution of
-    issuer ratings over time.
-
-    Attributes:
-        issuer (Issuer): The issuer being rated.
-        agency (RatingAgency): The agency assigning the rating.
-        rating (str): The assigned credit rating (e.g., "AAA", "BB+").
-        date_assigned (date): The date when this rating became effective.
-        is_active (bool): Whether this rating is currently active for this issuer/agency.
-        created_at (datetime): When this record was created.
-
-    Example:
-        >>> issuer = Issuer.objects.get(name="Republic of Cameroon")
-        >>> IssuerRating.objects.create(
-        ...     issuer=issuer,
-        ...     agency="S&P",
-        ...     rating="BB",
-        ...     outlook="Stable",
-        ...     date_assigned=date(2024, 4, 1)
-        ... )
-    """
-
-    class RatingAgency(models.TextChoices):
-        S_P = "S&P", "Standard & Poor's"
-        MOODY_S = "Moody's", "Moody's"
-        FITCH = "Fitch", "Fitch"
-        BLOOMFIELD = "Bloomfield", "Bloomfield"
-
-    issuer = models.ForeignKey(
-        "Issuer",
-        on_delete=models.CASCADE,
-        related_name="ratings",
-        verbose_name=_("Issuer"),
-        help_text="The issuer to which this rating applies.",
-    )
-    agency = models.CharField(
-        _("Rating Agency"),
-        max_length=255,
-        choices=RatingAgency.choices,
-        help_text="Agency that assigned the rating (e.g., 'S&P', 'Moody's', 'Fitch').",
-    )
-    rating = models.CharField(
-        _("Rating"),
-        max_length=255,
-        help_text="Credit rating assigned (e.g., 'AAA', 'BB+').",
-    )
-    date_assigned = models.DateField(
-        _("Date Assigned"), help_text="Date this rating became effective."
-    )
-    is_active = models.BooleanField(
-        _("Is Active"),
-        default=True,
-        help_text="Whether this rating is currently the active rating from this agency.",
-    )
-    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
-
-    class Meta:
-        verbose_name = _("Issuer Rating")
-        verbose_name_plural = _("Issuer Ratings")
-        ordering = ["-date_assigned", "agency"]
-        indexes = [
-            models.Index(fields=["issuer", "agency"]),
-            models.Index(fields=["issuer", "date_assigned"]),
-            models.Index(fields=["agency", "is_active"]),
-        ]
-        unique_together = [["issuer", "agency", "date_assigned"]]
-
-    def __str__(self) -> str:
-        """
-        String representation for the issuer rating.
-
-        Returns:
-            str: Human-readable string of the form "Issuer - Agency: Rating (as of date)".
-        """
-        return f"{self.issuer.name} - {self.agency}: {self.rating} (as of {self.date_assigned})"
 
 
 class InstrumentGroup(models.Model):
@@ -247,23 +99,6 @@ class InstrumentType(models.Model):
         return f"{self.group.name} - {self.name}"
 
 
-class ValuationMethod(models.TextChoices):
-    """
-    Valuation method choices for instruments.
-
-    Defines how the instrument is valued:
-    - MARK_TO_MARKET: Public assets with market prices
-    - MARK_TO_MODEL: Modeled valuations (future use)
-    - EXTERNAL_APPRAISAL: Third-party valuation
-    - MANUAL_DECLARED: Manual entry by institution
-    """
-
-    MARK_TO_MARKET = "mark_to_market", _("Mark to Market")
-    MARK_TO_MODEL = "mark_to_model", _("Mark to Model")
-    EXTERNAL_APPRAISAL = "external_appraisal", _("External Appraisal")
-    MANUAL_DECLARED = "manual_declared", _("Manual Declared")
-
-
 class Instrument(OrganizationOwnedModel):
     """
     Instrument model representing financial instruments in portfolios.
@@ -285,6 +120,16 @@ class Instrument(OrganizationOwnedModel):
         sector (str, optional): Economic sector classification.
         maturity_date (date, optional): Maturity date for fixed income instruments.
         coupon_rate (decimal, optional): Coupon rate for bonds (as percentage).
+        coupon_frequency (str, optional): Coupon payment frequency (e.g., 'ANNUAL', 'SEMI_ANNUAL').
+        first_listing_date (date, optional): Date when the bond was first listed on an exchange.
+        original_offering_amount (decimal, optional): Original offering amount at issuance.
+        units_outstanding (decimal, optional): Number of units/shares currently outstanding.
+        face_value (decimal, optional): Face value or par value of the bond.
+        amortization_method (str, optional): Amortization method (e.g., 'BULLET', 'AMORTIZING').
+        last_coupon_date (date, optional): Date of the last coupon payment.
+        next_coupon_date (date, optional): Date of the next scheduled coupon payment.
+        fund_category (str, optional): Fund category indicating asset type composition (for funds).
+        fund_launch_date (date, optional): Date when the fund was launched.
         valuation_method (str): How this instrument is valued.
         is_active (bool): Whether this instrument is currently active.
         created_at (datetime): When the instrument record was created.
@@ -306,6 +151,10 @@ class Instrument(OrganizationOwnedModel):
         ...     country="CM",
         ...     maturity_date=date(2029, 12, 31),
         ...     coupon_rate=5.5,
+        ...     coupon_frequency="ANNUAL",
+        ...     face_value=1000.0,
+        ...     original_offering_amount=100000000.0,
+        ...     next_coupon_date=date(2025, 12, 31),
         ...     valuation_method=ValuationMethod.MARK_TO_MARKET
         ... )
     """
@@ -347,7 +196,7 @@ class Instrument(OrganizationOwnedModel):
         _("Currency"), max_length=3, default=settings.DEFAULT_CURRENCY
     )
     issuer = models.ForeignKey(
-        "Issuer",
+        Issuer,
         on_delete=models.CASCADE,
         related_name="instruments",
         verbose_name=_("Issuer"),
@@ -369,6 +218,72 @@ class Instrument(OrganizationOwnedModel):
         blank=True,
         null=True,
         help_text="Coupon rate for bonds (as percentage).",
+    )
+    coupon_frequency = models.CharField(
+        _("Coupon Frequency"), max_length=255, blank=True, null=True
+    )
+    first_listing_date = models.DateField(
+        _("First Listing Date"),
+        blank=True,
+        null=True,
+        help_text="Date when the bond was first listed on an exchange.",
+    )
+    original_offering_amount = models.DecimalField(
+        _("Original Offering Amount"),
+        max_digits=20,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Original offering amount at issuance.",
+    )
+    units_outstanding = models.DecimalField(
+        _("Units Outstanding"),
+        max_digits=20,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Number of units/shares currently outstanding.",
+    )
+    face_value = models.DecimalField(
+        _("Face Value"),
+        max_digits=20,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Face value or par value of the bond.",
+    )
+    amortization_method = models.CharField(
+        _("Amortization Method"),
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Amortization method (e.g., 'BULLET', 'AMORTIZING', 'ZERO_COUPON').",
+    )
+    last_coupon_date = models.DateField(
+        _("Last Coupon Date"),
+        blank=True,
+        null=True,
+        help_text="Date of the last coupon payment.",
+    )
+    next_coupon_date = models.DateField(
+        _("Next Coupon Date"),
+        blank=True,
+        null=True,
+        help_text="Date of the next scheduled coupon payment.",
+    )
+    fund_category = models.CharField(
+        _("Fund Category"),
+        max_length=20,
+        choices=FundCategory.choices,
+        blank=True,
+        null=True,
+        help_text="Fund category indicating asset type composition (DIVERSIFIED, MONEY_MARKET, BOND, EQUITY).",
+    )
+    fund_launch_date = models.DateField(
+        _("Fund Launch Date"),
+        blank=True,
+        null=True,
+        help_text="Date when the fund was launched.",
     )
     valuation_method = models.CharField(
         _("Valuation Method"),
@@ -392,6 +307,10 @@ class Instrument(OrganizationOwnedModel):
             models.Index(fields=["organization", "currency"]),
             models.Index(fields=["organization", "issuer"]),
             models.Index(fields=["organization", "country"]),
+            models.Index(fields=["organization", "maturity_date"]),
+            models.Index(fields=["organization", "first_listing_date"]),
+            models.Index(fields=["organization", "next_coupon_date"]),
+            models.Index(fields=["organization", "fund_category"]),
         ]
 
     def __str__(self) -> str:

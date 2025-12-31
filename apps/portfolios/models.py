@@ -23,6 +23,7 @@ from django.utils.translation import gettext_lazy as _
 from djmoney.models.fields import CurrencyField, MoneyField
 
 from apps.reference_data.models import Instrument, ValuationMethod
+from libs.choices import ImportSourceType, ImportStatus
 from libs.models import OrganizationOwnedModel
 
 
@@ -143,27 +144,6 @@ class Portfolio(OrganizationOwnedModel):
 
     def __str__(self) -> str:
         return self.name
-
-
-class ImportStatus(models.TextChoices):
-    """Status choices for portfolio imports."""
-
-    PENDING = "pending", _("Pending")
-    PARSING = "parsing", _("Parsing")
-    VALIDATING = "validating", _("Validating")
-    PROCESSING = "processing", _("Processing")
-    SUCCESS = "success", _("Success")
-    FAILED = "failed", _("Failed")
-    PARTIAL = "partial", _("Partial")
-
-
-class ImportSourceType(models.TextChoices):
-    """Source type choices for portfolio imports."""
-
-    CUSTODIAN = "custodian", _("Custodian")
-    INTERNAL = "internal", _("Internal")
-    MANUAL = "manual", _("Manual")
-    EXTERNAL = "external", _("External")
 
 
 class PortfolioImport(OrganizationOwnedModel):

@@ -21,9 +21,21 @@ class Command(BaseCommand):
     """
     Management command to load all canonical reference data.
 
-    This is a convenience command that calls load_instrument_groups and
-    load_instrument_types in sequence. Loads global reference data (shared
-    across all organizations).
+    This module provides a Django management command for loading both the
+    industry-standard instrument groups and instrument types (canonical data)
+    into the database in a single operation.
+
+    Key components:
+    - Sequentially loads both instrument groups and types via delegated
+      commands (`load_instrument_groups`, `load_instrument_types`).
+    - Loads global reference data shared across all organizations (multi-tenant safe).
+    - Supports idempotent operation: safe to re-run multiple times.
+    - CLI options: Supports --dry-run for preview and --actor-id for audit attribution.
+
+    Usage example:
+        python manage.py load_reference_data
+        python manage.py load_reference_data --dry-run
+        python manage.py load_reference_data --actor-id 42
     """
 
     help = (

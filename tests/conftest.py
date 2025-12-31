@@ -12,11 +12,22 @@ from libs.tenant_context import set_current_org_id  # noqa: E402
 from tests.factories import (  # noqa: E402
     BondInstrumentFactory,
     EquityInstrumentFactory,
+    FXRateFactory,
+    FXRateImportFactory,
+    FXRateObservationFactory,
     InstrumentFactory,
     InstrumentGroupFactory,
+    InstrumentPriceFactory,
+    InstrumentPriceObservationFactory,
     InstrumentTypeFactory,
     IssuerFactory,
     IssuerRatingFactory,
+    MarketDataSourceFactory,
+    MarketIndexConstituentFactory,
+    MarketIndexFactory,
+    MarketIndexImportFactory,
+    MarketIndexValueFactory,
+    MarketIndexValueObservationFactory,
     OrganizationFactory,
     OrganizationMemberAdminFactory,
     OrganizationMemberAnalystFactory,
@@ -28,6 +39,10 @@ from tests.factories import (  # noqa: E402
     PositionSnapshotFactory,
     PrivateAssetInstrumentFactory,
     UserFactory,
+    YieldCurveFactory,
+    YieldCurveImportFactory,
+    YieldCurvePointFactory,
+    YieldCurvePointObservationFactory,
 )
 
 
@@ -219,3 +234,106 @@ def portfolio_import(org_context_with_org, portfolio):
 def position_snapshot(org_context_with_org, portfolio, instrument):
     """Fixture to create a PositionSnapshot instance."""
     return PositionSnapshotFactory(portfolio=portfolio, instrument=instrument)
+
+
+# Market Data Fixtures
+
+
+@pytest.fixture
+def market_data_source():
+    """Fixture to create a MarketDataSource instance."""
+    return MarketDataSourceFactory()
+
+
+@pytest.fixture
+def instrument_price_observation(instrument, market_data_source):
+    """Fixture to create an InstrumentPriceObservation instance."""
+    return InstrumentPriceObservationFactory(
+        instrument=instrument, source=market_data_source
+    )
+
+
+@pytest.fixture
+def instrument_price(instrument, market_data_source):
+    """Fixture to create an InstrumentPrice instance."""
+    return InstrumentPriceFactory(
+        instrument=instrument, chosen_source=market_data_source
+    )
+
+
+@pytest.fixture
+def yield_curve():
+    """Fixture to create a YieldCurve instance."""
+    return YieldCurveFactory()
+
+
+@pytest.fixture
+def yield_curve_point_observation(yield_curve, market_data_source):
+    """Fixture to create a YieldCurvePointObservation instance."""
+    return YieldCurvePointObservationFactory(
+        curve=yield_curve, source=market_data_source
+    )
+
+
+@pytest.fixture
+def yield_curve_point(yield_curve, market_data_source):
+    """Fixture to create a YieldCurvePoint instance."""
+    return YieldCurvePointFactory(curve=yield_curve, chosen_source=market_data_source)
+
+
+@pytest.fixture
+def fx_rate_observation(market_data_source):
+    """Fixture to create an FXRateObservation instance."""
+    return FXRateObservationFactory(source=market_data_source)
+
+
+@pytest.fixture
+def fx_rate(market_data_source):
+    """Fixture to create an FXRate instance."""
+    # Factory will automatically create observation to satisfy validation
+    return FXRateFactory(chosen_source=market_data_source)
+
+
+@pytest.fixture
+def yield_curve_import(yield_curve, market_data_source):
+    """Fixture to create a YieldCurveImport instance."""
+    return YieldCurveImportFactory(curve=yield_curve, source=market_data_source)
+
+
+@pytest.fixture
+def fx_rate_import(market_data_source):
+    """Fixture to create an FXRateImport instance."""
+    return FXRateImportFactory(source=market_data_source)
+
+
+# Market Index Fixtures
+
+
+@pytest.fixture
+def market_index():
+    """Fixture to create a MarketIndex instance."""
+    return MarketIndexFactory()
+
+
+@pytest.fixture
+def market_index_value_observation(market_index, market_data_source):
+    """Fixture to create a MarketIndexValueObservation instance."""
+    return MarketIndexValueObservationFactory(index=market_index, source=market_data_source)
+
+
+@pytest.fixture
+def market_index_value(market_index, market_data_source):
+    """Fixture to create a MarketIndexValue instance."""
+    return MarketIndexValueFactory(index=market_index, chosen_source=market_data_source)
+
+
+@pytest.fixture
+def market_index_constituent(market_index, instrument):
+    """Fixture to create a MarketIndexConstituent instance."""
+    return MarketIndexConstituentFactory(index=market_index, instrument=instrument)
+
+
+@pytest.fixture
+def market_index_import(market_index, market_data_source):
+    """Fixture to create a MarketIndexImport instance."""
+    return MarketIndexImportFactory(index=market_index, source=market_data_source)

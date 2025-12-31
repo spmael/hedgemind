@@ -31,9 +31,28 @@ class Command(BaseCommand):
     """
     Management command to load canonical instrument types.
 
-    This command is idempotent and creates audit log entries for all operations.
-    Types are loaded as global reference data (shared across all organizations).
-    It requires that instrument groups be loaded first.
+    This module provides a Django management command that loads the canonical, industry-standard
+    instrument types (such as COMMON_STOCK, GOVERNMENT_BOND, DEPOSIT, etc.) into the InstrumentType
+    model as global reference data. These types are assigned to their respective instrument groups
+    (EQUITY, FIXED_INCOME, etc.) and shared across all organizations. The command is designed to be
+    idempotent: it will create missing types, update incorrect attributes on existing types, and cause
+    no duplication or data loss when run multiple times.
+
+    Audit events are automatically created for all create/update operations for traceability. Instrument
+    groups must exist in advance, typically via the load_instrument_groups command, or the command
+    will fail.
+
+    Key components:
+    - Loads instrument types with stable, canonical codes and names under relevant instrument groups
+    - Ensures safe idempotency (repeat runs do not cause errors or duplicates)
+    - Global across all organizations (not org-scoped)
+    - Audit logging is automatic for every create/update
+    - Supports --dry-run for previewing changes, and --actor-id for audit attribution
+
+    Usage example:
+        python manage.py load_instrument_types
+        python manage.py load_instrument_types --dry-run
+        python manage.py load_instrument_types --actor-id 42
     """
 
     help = "Load canonical instrument types (idempotent, global reference data)"

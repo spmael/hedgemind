@@ -1,0 +1,1703 @@
+"""
+Reference data models for securities, issuers, and market data.
+
+This module provides the core reference data models that support portfolio
+management and risk analytics. All business reference data is scoped to
+organizations to support multi-tenant isolation.
+
+Key components:
+- Issuer: Entity that issues securities (governments, corporations, etc.)
+- Instrument: Financial instruments (bonds, equity, deposits, funds, etc.)
+- FXRate: Foreign exchange rates for currency conversion
+- YieldCurvePoint: Yield curve data points for fixed income valuation
+
+All models use OrganizationOwnedModel to ensure automatic organization scoping.
+"""
+
+from __future__ import annotations
+
+from django.conf import settings
+from django.db import models
+from django.utils.translation import gettext_lazy as _
+from django_countries.fields import CountryField
+from djmoney.models.fields import CurrencyField
+
+from libs.choices import ImportStatus
+from libs.models import OrganizationOwnedModel
+
+
+class Issuer(OrganizationOwnedModel):
+    """
+    Issuer model representing entities that issue financial instruments.
+
+    Issuers can be governments, corporations, financial institutions, or other
+    entities that issue securities. This model supports issuer-level exposure
+    analysis and concentration risk calculations.
+
+    Attributes:
+        name (str): Full legal name of the issuer.
+        short_name (str, optional): Short name or abbreviation.
+        country (str): Country code of the issuer's domicile.
+        issuer_group (str, optional): Group classification (e.g., "Sovereign", "Corporate").
+        rating (str, optional): Credit rating (e.g., "AAA", "BB+").
+        rating_agency (str, optional): Rating agency that provided the rating.
+        is_active (bool): Whether this issuer is currently active.
+        created_at (datetime): When the issuer record was created.
+        updated_at (datetime): When the issuer record was last updated.
+
+    Example:
+        >>> issuer = Issuer.objects.create(
+        ...     name="Republic of Cameroon",
+        ...     country="CM",
+        ...     issuer_group="Sovereign"
+        ... )
+        >>> print(issuer.name)
+        Republic of Cameroon
+    """
+
+    name = models.CharField(_("Name"), max_length=255)
+    short_name = models.CharField(
+        _("Short Name"), max_length=255, blank=True, null=True
+    )
+    country = CountryField(_("Country"), max_length=2, blank=True, null=True)
+    issuer_group = models.CharField(
+        _("Issuer Group"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Group classification (e.g., 'Sovereign', 'Corporate')",
+    )
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Issuer")
+        verbose_name_plural = _("Issuers")
+        indexes = [
+            models.Index(fields=["organization", "name"]),
+            models.Index(fields=["organization", "country"]),
+            models.Index(fields=["organization", "issuer_group"]),
+        ]
+        unique_together = [["organization", "name"]]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class IssuerRating(models.Model):
+    """
+    Represents a credit rating assigned to an Issuer by a specific rating agency at a point in time.
+
+    Supports multiple agencies rating the same issuer, and maintains the historical evolution of
+    issuer ratings over time.
+
+    Attributes:
+        issuer (Issuer): The issuer being rated.
+        agency (RatingAgency): The agency assigning the rating.
+        rating (str): The assigned credit rating (e.g., "AAA", "BB+").
+        date_assigned (date): The date when this rating became effective.
+        is_active (bool): Whether this rating is currently active for this issuer/agency.
+        created_at (datetime): When this record was created.
+
+    Example:
+        >>> issuer = Issuer.objects.get(name="Republic of Cameroon")
+        >>> IssuerRating.objects.create(
+        ...     issuer=issuer,
+        ...     agency="S&P",
+        ...     rating="BB",
+        ...     outlook="Stable",
+        ...     date_assigned=date(2024, 4, 1)
+        ... )
+    """
+
+    class RatingAgency(models.TextChoices):
+        S_P = "S&P", "Standard & Poor's"
+        MOODY_S = "Moody's", "Moody's"
+        FITCH = "Fitch", "Fitch"
+        BLOOMFIELD = "Bloomfield", "Bloomfield"
+
+    issuer = models.ForeignKey(
+        "Issuer",
+        on_delete=models.CASCADE,
+        related_name="ratings",
+        verbose_name=_("Issuer"),
+        help_text="The issuer to which this rating applies.",
+    )
+    agency = models.CharField(
+        _("Rating Agency"),
+        max_length=255,
+        choices=RatingAgency.choices,
+        help_text="Agency that assigned the rating (e.g., 'S&P', 'Moody's', 'Fitch').",
+    )
+    rating = models.CharField(
+        _("Rating"),
+        max_length=255,
+        help_text="Credit rating assigned (e.g., 'AAA', 'BB+').",
+    )
+    date_assigned = models.DateField(
+        _("Date Assigned"), help_text="Date this rating became effective."
+    )
+    is_active = models.BooleanField(
+        _("Is Active"),
+        default=True,
+        help_text="Whether this rating is currently the active rating from this agency.",
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Issuer Rating")
+        verbose_name_plural = _("Issuer Ratings")
+        ordering = ["-date_assigned", "agency"]
+        indexes = [
+            models.Index(fields=["issuer", "agency"]),
+            models.Index(fields=["issuer", "date_assigned"]),
+            models.Index(fields=["agency", "is_active"]),
+        ]
+        unique_together = [["issuer", "agency", "date_assigned"]]
+
+    def __str__(self) -> str:
+        """
+        String representation for the issuer rating.
+
+        Returns:
+            str: Human-readable string of the form "Issuer - Agency: Rating (as of date)".
+        """
+        return f"{self.issuer.name} - {self.agency}: {self.rating} (as of {self.date_assigned})"
+
+
+class InstrumentGroup(models.Model):
+    """
+    Grouping model for financial instruments.
+
+    InstrumentGroup allows classification and organization of financial instruments
+    for reporting, analytics, or reference data purposes. Groups may represent sectors,
+    product types, or institution-specific categories for use in exposure calculations
+    or risk reports.
+
+    Attributes
+    ----------
+    name : str
+        Human-readable name for the instrument group.
+    description : str, optional
+        Detailed description of the group, including intended use or mapping logic.
+    created_at : datetime
+        Timestamp when this record was created (auto-managed).
+    updated_at : datetime
+        Timestamp when this record was last modified.
+
+    Example
+    -------
+        >>> group = InstrumentGroup.objects.create(name="Government Bonds")
+        >>> print(group.name)
+        Government Bonds
+
+    Note
+    ----
+    Groups should have unique names. This classification affects analytics
+    calculations and grouping in board/regulatory reports.
+    """
+
+    name = models.CharField(_("Name"), max_length=255)
+    description = models.TextField(_("Description"), blank=True, null=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Instrument Group")
+        verbose_name_plural = _("Instrument Groups")
+        indexes = [
+            models.Index(fields=["name"]),
+        ]
+        unique_together = [["name"]]
+
+    def __str__(self) -> str:
+        return self.name
+
+
+class InstrumentType(models.Model):
+    """
+    Represents a type of financial instrument.
+
+    Attributes:
+        name (str): The name of the instrument type.
+        description (str): The description of the instrument type.
+    """
+
+    group = models.ForeignKey(
+        "InstrumentGroup",
+        on_delete=models.CASCADE,
+        related_name="types",
+        verbose_name=_("Instrument Group"),
+        help_text="The group to which this type belongs.",
+    )
+    name = models.CharField(_("Name"), max_length=255)
+    description = models.TextField(_("Description"), blank=True, null=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Instrument Type")
+        verbose_name_plural = _("Instrument Types")
+        indexes = [
+            models.Index(fields=["group", "name"]),
+        ]
+        unique_together = [["group", "name"]]
+
+    def __str__(self) -> str:
+        return f"{self.group.name} - {self.name}"
+
+
+class ValuationMethod(models.TextChoices):
+    """
+    Valuation method choices for instruments.
+
+    Defines how the instrument is valued:
+    - MARK_TO_MARKET: Public assets with market prices
+    - MARK_TO_MODEL: Modeled valuations (future use)
+    - EXTERNAL_APPRAISAL: Third-party valuation
+    - MANUAL_DECLARED: Manual entry by institution
+    """
+
+    MARK_TO_MARKET = "mark_to_market", _("Mark to Market")
+    MARK_TO_MODEL = "mark_to_model", _("Mark to Model")
+    EXTERNAL_APPRAISAL = "external_appraisal", _("External Appraisal")
+    MANUAL_DECLARED = "manual_declared", _("Manual Declared")
+
+
+class Instrument(OrganizationOwnedModel):
+    """
+    Instrument model representing financial instruments in portfolios.
+
+    Instruments are the core reference data entities that represent securities,
+    bonds, equities, deposits, and other financial assets. This model supports
+    both public market instruments and private assets with appropriate
+    valuation methods.
+
+    Attributes:
+        isin (str, optional): International Securities Identification Number.
+        ticker (str, optional): Trading ticker symbol.
+        name (str): Full name or description of the instrument.
+        instrument_group (InstrumentGroup): Group of instrument.
+        instrument_type (InstrumentType): Type of instrument.
+        currency (str): Currency code of the instrument.
+        issuer (Issuer, optional): Issuer of the instrument (for bonds, equity).
+        country (str): Country code of the instrument's domicile.
+        sector (str, optional): Economic sector classification.
+        maturity_date (date, optional): Maturity date for fixed income instruments.
+        coupon_rate (decimal, optional): Coupon rate for bonds (as percentage).
+        valuation_method (str): How this instrument is valued.
+        is_active (bool): Whether this instrument is currently active.
+        created_at (datetime): When the instrument record was created.
+        updated_at (datetime): When the instrument record was last updated.
+
+    Note:
+        For private assets, use MANUAL_DECLARED valuation method and store
+        declared values rather than attempting market pricing.
+
+    Example:
+        >>> issuer = Issuer.objects.get(name="Republic of Cameroon")
+        >>> bond = Instrument.objects.create(
+        ...     isin="CM1234567890",
+        ...     name="Cameroon 5Y Government Bond",
+        ...     instrument_group=InstrumentGroup.objects.get(name="Government Bonds"),
+        ...     instrument_type=InstrumentType.objects.get(name="Bond"),
+        ...     currency="XAF",
+        ...     issuer=issuer,
+        ...     country="CM",
+        ...     maturity_date=date(2029, 12, 31),
+        ...     coupon_rate=5.5,
+        ...     valuation_method=ValuationMethod.MARK_TO_MARKET
+        ... )
+    """
+
+    isin = models.CharField(
+        _("ISIN"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="International Securities Identification Number.",
+    )
+    ticker = models.CharField(
+        _("Ticker"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Trading ticker symbol.",
+    )
+    name = models.CharField(
+        _("Name"),
+        max_length=255,
+        help_text="Full name or description of the instrument.",
+    )
+    instrument_group = models.ForeignKey(
+        "InstrumentGroup",
+        on_delete=models.CASCADE,
+        related_name="instruments",
+        verbose_name=_("Instrument Group"),
+        help_text="The group to which this instrument belongs.",
+    )
+    instrument_type = models.ForeignKey(
+        "InstrumentType",
+        on_delete=models.CASCADE,
+        related_name="instruments",
+        verbose_name=_("Instrument Type"),
+        help_text="The type of this instrument.",
+    )
+    currency = CurrencyField(
+        _("Currency"), max_length=3, default=settings.DEFAULT_CURRENCY
+    )
+    issuer = models.ForeignKey(
+        "Issuer",
+        on_delete=models.CASCADE,
+        related_name="instruments",
+        verbose_name=_("Issuer"),
+        help_text="The issuer of this instrument.",
+    )
+    country = CountryField(_("Country"), max_length=2, blank=True, null=True)
+    sector = models.CharField(
+        _("Sector"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Economic sector classification.",
+    )
+    maturity_date = models.DateField(_("Maturity Date"), blank=True, null=True)
+    coupon_rate = models.DecimalField(
+        _("Coupon Rate"),
+        max_digits=10,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text="Coupon rate for bonds (as percentage).",
+    )
+    valuation_method = models.CharField(
+        _("Valuation Method"),
+        max_length=255,
+        choices=ValuationMethod.choices,
+        default=ValuationMethod.MARK_TO_MARKET,
+        help_text="How this instrument is valued.",
+    )
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Instrument")
+        verbose_name_plural = _("Instruments")
+        indexes = [
+            models.Index(fields=["organization", "isin"]),
+            models.Index(fields=["organization", "ticker"]),
+            models.Index(fields=["organization", "instrument_group"]),
+            models.Index(fields=["organization", "instrument_type"]),
+            models.Index(fields=["organization", "currency"]),
+            models.Index(fields=["organization", "issuer"]),
+            models.Index(fields=["organization", "country"]),
+        ]
+
+    def __str__(self) -> str:
+        if self.isin:
+            return f"{self.name} ({self.isin})"
+        elif self.ticker:
+            return f"{self.name} ({self.ticker})"
+        return self.name
+
+
+class MarketDataSource(models.Model):
+    """
+    MarketDataSource model defining market data sources and their priority hierarchy.
+
+    Unified source model for all market data types (prices, FX rates, yield curves).
+    Defines sources and establishes a global priority hierarchy for selecting the best
+    data when multiple sources are available.
+
+    Attributes:
+        code (str): Short code for the source (e.g., "BVMAC", "BEAC", "BLOOMBERG", "MANUAL").
+        name (str): Full name of the source.
+        priority (int): Priority rank (lower = higher priority, e.g., 1 = best, 10 = worst).
+        source_type (str): Type of source (EXCHANGE, CENTRAL_BANK, VENDOR, MANUAL, CUSTODIAN).
+        is_active (bool): Whether this source is currently active.
+        description (str, optional): Description of the source.
+        created_at (datetime): When the source record was created.
+        updated_at (datetime): When the source record was last updated.
+
+    Example:
+        >>> source = MarketDataSource.objects.create(
+        ...     code="BVMAC",
+        ...     name="Douala Stock Exchange",
+        ...     priority=1,
+        ...     source_type=MarketDataSource.SourceType.EXCHANGE,
+        ...     is_active=True
+        ... )
+    """
+
+    class SourceType(models.TextChoices):
+        """Source type choices."""
+
+        EXCHANGE = "exchange", _("Exchange")
+        CENTRAL_BANK = "central_bank", _("Central Bank")
+        VENDOR = "vendor", _("Vendor")
+        MANUAL = "manual", _("Manual")
+        CUSTODIAN = "custodian", _("Custodian")
+
+    code = models.CharField(
+        _("Code"),
+        max_length=50,
+        unique=True,
+        help_text=_("Short code for the source (e.g., 'BVMAC', 'BEAC', 'BLOOMBERG')"),
+    )
+    name = models.CharField(
+        _("Name"),
+        max_length=255,
+        help_text=_("Full name of the source"),
+    )
+    priority = models.IntegerField(
+        _("Priority"),
+        default=100,
+        help_text=_(
+            "Priority rank (lower = higher priority, e.g., 1 = best, 10 = worst)"
+        ),
+    )
+    source_type = models.CharField(
+        _("Source Type"),
+        max_length=20,
+        choices=SourceType.choices,
+        blank=True,
+        null=True,
+        help_text=_(
+            "Type of source (EXCHANGE, CENTRAL_BANK, VENDOR, MANUAL, CUSTODIAN)"
+        ),
+    )
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    description = models.TextField(_("Description"), blank=True, null=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Market Data Source")
+        verbose_name_plural = _("Market Data Sources")
+        ordering = ["priority", "code"]
+        indexes = [
+            models.Index(fields=["code"]),
+            models.Index(fields=["priority", "is_active"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.code})"
+
+
+class InstrumentPriceObservation(models.Model):
+    """
+    InstrumentPriceObservation model representing multi-source raw price observations.
+
+    This is the ETL landing zone where raw price data from various sources is stored.
+    Multiple observations can exist for the same instrument/date/price_type from different
+    sources. The canonicalization process selects the best observation based on source
+    priority and creates a canonical InstrumentPrice record.
+
+    Attributes:
+        instrument (Instrument): The instrument this price applies to.
+        date (date): Date for which this price is valid.
+        price_type (str): Type of price (close, bid, ask, mid, NAV, etc.).
+        source (PriceSource): The source of this price observation.
+        price (decimal): Market price per unit (interpretation depends on quote_convention).
+        quote_convention (str): How to interpret the price (PRICE, PERCENT_OF_PAR, YIELD).
+        clean_or_dirty (str): Whether price includes accrued interest (CLEAN, DIRTY, NA).
+        revision (int): Revision number (0 = initial, 1+ = corrections).
+        volume (decimal, optional): Trading volume for the date.
+        currency (str, optional): Currency override (if different from instrument currency).
+        observed_at (datetime): When this observation was received/recorded.
+        created_at (datetime): When the observation record was created.
+        updated_at (datetime): When the observation record was last updated.
+
+    Note:
+        - This is the raw ETL landing zone - multiple observations per instrument/date are expected.
+        - Canonicalization process selects best observation based on source priority.
+        - For bonds: typically PERCENT_OF_PAR with CLEAN or DIRTY.
+        - For equities: typically PRICE with NA for clean_or_dirty.
+        - For mutual funds: typically NAV price_type with PRICE convention.
+
+    Example:
+        >>> instrument = Instrument.objects.get(isin="CM1234567890")
+        >>> source = PriceSource.objects.get(code="BVMAC")
+        >>> observation = InstrumentPriceObservation.objects.create(
+        ...     instrument=instrument,
+        ...     date=date.today(),
+        ...     price_type=InstrumentPriceObservation.PriceType.CLOSE,
+        ...     source=source,
+        ...     price=105.50,
+        ...     quote_convention=InstrumentPriceObservation.QuoteConvention.PERCENT_OF_PAR,
+        ...     clean_or_dirty=InstrumentPriceObservation.CleanOrDirty.CLEAN,
+        ...     revision=0,
+        ...     observed_at=timezone.now()
+        ... )
+    """
+
+    class PriceType(models.TextChoices):
+        """Price type choices."""
+
+        CLOSE = "close", _("Close")
+        BID = "bid", _("Bid")
+        ASK = "ask", _("Ask")
+        MID = "mid", _("Mid")
+        OPEN = "open", _("Open")
+        HIGH = "high", _("High")
+        LOW = "low", _("Low")
+        NAV = "nav", _("NAV")  # For mutual funds
+
+    class QuoteConvention(models.TextChoices):
+        """Quote convention choices - how to interpret the price value."""
+
+        PRICE = "price", _("Price")  # Absolute price (equities, some bonds)
+        PERCENT_OF_PAR = "percent_of_par", _(
+            "Percent of Par"
+        )  # Common for bonds (e.g., 105.50 = 105.5%)
+        YIELD = "yield", _(
+            "Yield"
+        )  # Yield-to-maturity (sometimes provided instead of price)
+
+    class CleanOrDirty(models.TextChoices):
+        """Clean or dirty price indicator."""
+
+        CLEAN = "clean", _("Clean")  # Price excludes accrued interest
+        DIRTY = "dirty", _("Dirty")  # Price includes accrued interest
+        NA = "na", _("N/A")  # Not applicable (equities, funds, deposits)
+
+    instrument = models.ForeignKey(
+        Instrument,
+        on_delete=models.CASCADE,
+        related_name="price_observations",
+        verbose_name=_("Instrument"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this price is valid"),
+    )
+    price_type = models.CharField(
+        _("Price Type"),
+        max_length=10,
+        choices=PriceType.choices,
+        default=PriceType.CLOSE,
+        help_text=_("Type of price (close, bid, ask, etc.)"),
+    )
+    source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="market_data_observations",
+        verbose_name=_("Source"),
+    )
+    price = models.DecimalField(
+        _("Price"),
+        max_digits=20,
+        decimal_places=6,
+        help_text=_(
+            "Market price per unit (interpretation depends on quote_convention)"
+        ),
+    )
+    quote_convention = models.CharField(
+        _("Quote Convention"),
+        max_length=20,
+        choices=QuoteConvention.choices,
+        default=QuoteConvention.PRICE,
+        help_text=_("How to interpret the price (PRICE, PERCENT_OF_PAR, YIELD)"),
+    )
+    clean_or_dirty = models.CharField(
+        _("Clean or Dirty"),
+        max_length=10,
+        choices=CleanOrDirty.choices,
+        default=CleanOrDirty.NA,
+        help_text=_("Whether price includes accrued interest (CLEAN, DIRTY, NA)"),
+    )
+    revision = models.SmallIntegerField(
+        _("Revision"),
+        default=0,
+        help_text=_("Revision number (0 = initial, 1+ = corrections)"),
+    )
+    volume = models.DecimalField(
+        _("Volume"),
+        max_digits=20,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text=_("Trading volume for the date"),
+    )
+    currency = CurrencyField(
+        _("Currency Override"),
+        max_length=3,
+        blank=True,
+        null=True,
+        help_text=_("Currency override if different from instrument currency (rare)"),
+    )
+    observed_at = models.DateTimeField(
+        _("Observed At"),
+        help_text=_("When this observation was received/recorded"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Instrument Price Observation")
+        verbose_name_plural = _("Instrument Price Observations")
+        indexes = [
+            models.Index(fields=["instrument", "date", "price_type"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["source", "date"]),
+            models.Index(fields=["observed_at"]),
+        ]
+        # Multiple observations per instrument/date/price_type/source/revision are allowed
+        unique_together = [["instrument", "date", "price_type", "source", "revision"]]
+        ordering = ["-date", "instrument", "-observed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.instrument.name} - {self.price} from {self.source.code} ({self.date})"
+
+
+class SelectionReason(models.TextChoices):
+    """Reason for selecting a price observation as canonical."""
+
+    AUTO_POLICY = "auto_policy", _("Auto Policy")  # Selected by priority policy
+    MANUAL_OVERRIDE = "manual_override", _("Manual Override")  # Manually selected
+    ONLY_AVAILABLE = "only_available", _("Only Available")  # Only one source available
+
+
+class InstrumentPrice(models.Model):
+    """
+    InstrumentPrice model representing canonical "chosen" prices for valuation.
+
+    This is the canonical price table used for portfolio valuation. Prices are selected
+    from InstrumentPriceObservation based on source priority hierarchy. This table
+    stores one price per instrument/date/price_type - the "best" price according to
+    the selection policy.
+
+    Attributes:
+        instrument (Instrument): The instrument this price applies to.
+        date (date): Date for which this price is valid.
+        price_type (str): Type of price (close, bid, ask, mid, NAV, etc.).
+        chosen_source (PriceSource): The source that was selected for this canonical price.
+        observation (InstrumentPriceObservation, optional): The observation that was selected.
+        price (decimal): Market price per unit (stored directly for performance).
+        quote_convention (str): How to interpret the price (PRICE, PERCENT_OF_PAR, YIELD).
+        clean_or_dirty (str): Whether price includes accrued interest (CLEAN, DIRTY, NA).
+        volume (decimal, optional): Trading volume for the date.
+        currency (str, optional): Currency override (if different from instrument currency).
+        selection_reason (str): Why this price was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.).
+        selected_by (User, optional): User who manually selected this price (if manual override).
+        selected_at (datetime): When this price was selected/canonicalized.
+        created_at (datetime): When the canonical price record was created.
+        updated_at (datetime): When the canonical price record was last updated.
+
+    Note:
+        - This is the single source of truth for valuation - only one price per instrument/date/price_type.
+        - Prices are selected from observations via canonicalization process.
+        - Manual overrides are tracked for audit purposes.
+        - For bonds: typically PERCENT_OF_PAR with CLEAN or DIRTY.
+        - For equities: typically PRICE with NA for clean_or_dirty.
+        - For mutual funds: typically NAV price_type with PRICE convention.
+        - Deposits do not use this model (they have principal + accrued interest, not prices).
+
+    Example:
+        >>> instrument = Instrument.objects.get(isin="CM1234567890")
+        >>> source = PriceSource.objects.get(code="BVMAC")
+        >>> observation = InstrumentPriceObservation.objects.get(...)
+        >>> canonical_price = InstrumentPrice.objects.create(
+        ...     instrument=instrument,
+        ...     date=date.today(),
+        ...     price_type=InstrumentPrice.PriceType.CLOSE,
+        ...     chosen_source=source,
+        ...     observation=observation,
+        ...     price=105.50,
+        ...     quote_convention=InstrumentPrice.QuoteConvention.PERCENT_OF_PAR,
+        ...     clean_or_dirty=InstrumentPrice.CleanOrDirty.CLEAN,
+        ...     selection_reason=SelectionReason.AUTO_POLICY,
+        ...     selected_at=timezone.now()
+        ... )
+    """
+
+    class PriceType(models.TextChoices):
+        """Price type choices."""
+
+        CLOSE = "close", _("Close")
+        BID = "bid", _("Bid")
+        ASK = "ask", _("Ask")
+        MID = "mid", _("Mid")
+        OPEN = "open", _("Open")
+        HIGH = "high", _("High")
+        LOW = "low", _("Low")
+        NAV = "nav", _("NAV")  # For mutual funds
+
+    class QuoteConvention(models.TextChoices):
+        """Quote convention choices - how to interpret the price value."""
+
+        PRICE = "price", _("Price")  # Absolute price (equities, some bonds)
+        PERCENT_OF_PAR = "percent_of_par", _(
+            "Percent of Par"
+        )  # Common for bonds (e.g., 105.50 = 105.5%)
+        YIELD = "yield", _(
+            "Yield"
+        )  # Yield-to-maturity (sometimes provided instead of price)
+
+    class CleanOrDirty(models.TextChoices):
+        """Clean or dirty price indicator."""
+
+        CLEAN = "clean", _("Clean")  # Price excludes accrued interest
+        DIRTY = "dirty", _("Dirty")  # Price includes accrued interest
+        NA = "na", _("N/A")  # Not applicable (equities, funds, deposits)
+
+    instrument = models.ForeignKey(
+        Instrument,
+        on_delete=models.CASCADE,
+        related_name="canonical_prices",
+        verbose_name=_("Instrument"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this price is valid"),
+    )
+    price_type = models.CharField(
+        _("Price Type"),
+        max_length=10,
+        choices=PriceType.choices,
+        default=PriceType.CLOSE,
+        help_text=_("Type of price (close, bid, ask, etc.)"),
+    )
+    chosen_source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="canonical_market_data",
+        verbose_name=_("Chosen Source"),
+        help_text=_("The source that was selected for this canonical price"),
+    )
+    observation = models.ForeignKey(
+        InstrumentPriceObservation,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="canonical_prices",
+        verbose_name=_("Observation"),
+        help_text=_("The observation that was selected (optional, for audit trail)"),
+    )
+    price = models.DecimalField(
+        _("Price"),
+        max_digits=20,
+        decimal_places=6,
+        help_text=_("Market price per unit (stored directly for performance)"),
+    )
+    quote_convention = models.CharField(
+        _("Quote Convention"),
+        max_length=20,
+        choices=QuoteConvention.choices,
+        default=QuoteConvention.PRICE,
+        help_text=_("How to interpret the price (PRICE, PERCENT_OF_PAR, YIELD)"),
+    )
+    clean_or_dirty = models.CharField(
+        _("Clean or Dirty"),
+        max_length=10,
+        choices=CleanOrDirty.choices,
+        default=CleanOrDirty.NA,
+        help_text=_("Whether price includes accrued interest (CLEAN, DIRTY, NA)"),
+    )
+    volume = models.DecimalField(
+        _("Volume"),
+        max_digits=20,
+        decimal_places=2,
+        blank=True,
+        null=True,
+        help_text=_("Trading volume for the date"),
+    )
+    currency = CurrencyField(
+        _("Currency Override"),
+        max_length=3,
+        blank=True,
+        null=True,
+        help_text=_("Currency override if different from instrument currency (rare)"),
+    )
+    selection_reason = models.CharField(
+        _("Selection Reason"),
+        max_length=20,
+        choices=SelectionReason.choices,
+        default=SelectionReason.AUTO_POLICY,
+        help_text=_("Why this price was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.)"),
+    )
+    selected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="selected_prices",
+        verbose_name=_("Selected By"),
+        help_text=_("User who manually selected this price (if manual override)"),
+    )
+    selected_at = models.DateTimeField(
+        _("Selected At"),
+        help_text=_("When this price was selected/canonicalized"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Instrument Price")
+        verbose_name_plural = _("Instrument Prices")
+        indexes = [
+            models.Index(fields=["instrument", "date"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["instrument", "date", "price_type"]),
+            models.Index(fields=["chosen_source"]),
+        ]
+        # One canonical price per instrument/date/price_type (global, not org-scoped)
+        unique_together = [["instrument", "date", "price_type"]]
+        ordering = ["-date", "instrument"]
+
+    def __str__(self) -> str:
+        return f"{self.instrument.name} - {self.price} from {self.chosen_source.code} ({self.date})"
+
+
+class YieldCurveType(models.TextChoices):
+    """Yield curve type choices."""
+
+    GOVT = "govt", _("Government")
+    SWAP = "swap", _("Swap")
+    OIS = "ois", _("OIS")
+    CORPORATE = "corporate", _("Corporate")
+    POLICY = "policy", _("Policy Rate")
+
+
+class YieldCurve(models.Model):
+    """
+    YieldCurve model representing a named yield curve.
+
+    Groups yield curve points into named curves (e.g., "Government Curve", "Swap Curve").
+    Each curve has a type (GOVT, SWAP, etc.) and a currency. Points reference the curve,
+    not the currency directly, to ensure consistency.
+
+    Attributes:
+        name (str): Human-readable name of the yield curve (e.g., "XAF Government Curve").
+        curve_type (str): Type of curve (GOVT, SWAP, OIS, CORPORATE, POLICY).
+        currency (str): Currency code for this curve.
+        description (str, optional): Description of the curve.
+        is_active (bool): Whether this curve is currently active.
+        created_at (datetime): When the curve record was created.
+        updated_at (datetime): When the curve record was last updated.
+
+    Example:
+        >>> curve = YieldCurve.objects.create(
+        ...     name="XAF Government Curve",
+        ...     curve_type=YieldCurveType.GOVT,
+        ...     currency="XAF",
+        ...     description="Government bond yield curve"
+        ... )
+    """
+
+    name = models.CharField(
+        _("Name"),
+        max_length=100,
+        help_text=_(
+            "Human-readable name of the yield curve (e.g., 'XAF Government Curve')"
+        ),
+    )
+    curve_type = models.CharField(
+        _("Curve Type"),
+        max_length=20,
+        choices=YieldCurveType.choices,
+        help_text=_("Type of curve (GOVT, SWAP, OIS, CORPORATE, POLICY)"),
+    )
+    currency = CurrencyField(
+        _("Currency"),
+        max_length=3,
+        help_text=_("Currency code for this curve"),
+    )
+    country = CountryField(
+        _("Country"),
+        help_text=_("Country for this curve"),
+    )
+    description = models.TextField(_("Description"), blank=True, null=True)
+    is_active = models.BooleanField(_("Is Active"), default=True)
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Yield Curve")
+        verbose_name_plural = _("Yield Curves")
+        indexes = [
+            models.Index(fields=["currency", "curve_type"]),
+            models.Index(fields=["currency"]),
+            models.Index(fields=["curve_type"]),
+        ]
+        unique_together = [["currency", "name"]]
+
+    def __str__(self) -> str:
+        return f"{self.name} ({self.currency})"
+
+
+class YieldCurvePointObservation(models.Model):
+    """
+    YieldCurvePointObservation model representing multi-source raw yield curve observations.
+
+    This is the ETL landing zone where raw yield curve data from various sources is stored.
+    Multiple observations can exist for the same curve/tenor/date from different sources.
+    The canonicalization process selects the best observation based on source priority
+    and creates a canonical YieldCurvePoint record.
+
+    Attributes:
+        curve (YieldCurve): The yield curve this observation belongs to.
+        tenor (str): Tenor description for display (e.g., "1M", "3M", "1Y", "5Y", "10Y").
+        tenor_days (int): Tenor in days (e.g., 30 for 1M, 365 for 1Y, 1825 for 5Y) - REQUIRED.
+        rate (decimal): Interest rate as percentage (e.g., 5.50 for 5.5%).
+        date (date): Date for which this yield point is valid.
+        source (MarketDataSource): The source of this yield curve observation.
+        revision (int): Revision number (0 = initial, 1+ = corrections).
+        observed_at (datetime): When this observation was received/recorded.
+        created_at (datetime): When the observation record was created.
+        updated_at (datetime): When the observation record was last updated.
+
+    Note:
+        - Currency comes from curve.currency, not stored here to avoid inconsistency.
+        - tenor_days is the key field for uniqueness and indexing (not tenor string).
+        - Rate is stored as a percentage (e.g., 5.50 for 5.5%). For calculations, divide by 100.
+
+    Example:
+        >>> curve = YieldCurve.objects.get(name="XAF Government Curve")
+        >>> source = MarketDataSource.objects.get(code="BEAC")
+        >>> observation = YieldCurvePointObservation.objects.create(
+        ...     curve=curve,
+        ...     tenor="5Y",
+        ...     tenor_days=1825,
+        ...     rate=5.50,
+        ...     date=date.today(),
+        ...     source=source,
+        ...     revision=0,
+        ...     observed_at=timezone.now()
+        ... )
+    """
+
+    curve = models.ForeignKey(
+        YieldCurve,
+        on_delete=models.CASCADE,
+        related_name="point_observations",
+        verbose_name=_("Curve"),
+        help_text=_("The yield curve this observation belongs to"),
+    )
+    tenor = models.CharField(
+        _("Tenor"),
+        max_length=10,
+        help_text=_(
+            "Tenor description for display (e.g., '1M', '3M', '1Y', '5Y', '10Y')"
+        ),
+    )
+    tenor_days = models.IntegerField(
+        _("Tenor Days"),
+        help_text=_(
+            "Tenor in days (e.g., 30 for 1M, 365 for 1Y, 1825 for 5Y) - REQUIRED"
+        ),
+    )
+    rate = models.DecimalField(
+        _("Rate"),
+        max_digits=8,
+        decimal_places=4,
+        help_text=_("Interest rate as percentage (e.g., 5.50 for 5.5%)"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this yield point is valid"),
+    )
+    source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="yield_curve_observations",
+        verbose_name=_("Source"),
+    )
+    revision = models.SmallIntegerField(
+        _("Revision"),
+        default=0,
+        help_text=_("Revision number (0 = initial, 1+ = corrections)"),
+    )
+    observed_at = models.DateTimeField(
+        _("Observed At"),
+        help_text=_("When this observation was received/recorded"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Yield Curve Point Observation")
+        verbose_name_plural = _("Yield Curve Point Observations")
+        indexes = [
+            models.Index(fields=["curve", "tenor_days", "date"]),
+            models.Index(fields=["curve", "date"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["source", "date"]),
+            models.Index(fields=["observed_at"]),
+        ]
+        # Multiple observations per curve/tenor_days/date/source/revision are allowed
+        unique_together = [["curve", "tenor_days", "date", "source", "revision"]]
+        ordering = ["-date", "curve", "tenor_days", "-observed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.curve.name} {self.tenor} = {self.rate}% from {self.source.code} ({self.date})"
+
+
+class YieldCurvePoint(models.Model):
+    """
+    YieldCurvePoint model representing canonical "chosen" yield curve points.
+
+    This is the canonical yield curve table used for fixed income valuation and duration/DV01
+    calculations. Points are selected from YieldCurvePointObservation based on source priority
+    hierarchy. This table stores one point per curve/tenor_days/date - the "best" point according
+    to the selection policy.
+
+    Attributes:
+        curve (YieldCurve): The yield curve this point belongs to (REQUIRED).
+        tenor (str): Tenor description for display (e.g., "1M", "3M", "1Y", "5Y", "10Y").
+        tenor_days (int): Tenor in days (e.g., 30 for 1M, 365 for 1Y, 1825 for 5Y) - REQUIRED.
+        rate (decimal): Interest rate as percentage (e.g., 5.50 for 5.5%).
+        date (date): Date for which this yield point is valid.
+        source (MarketDataSource): The source that was selected for this canonical point.
+        observation (YieldCurvePointObservation, optional): The observation that was selected.
+        selection_reason (str): Why this point was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.).
+        selected_by (User, optional): User who manually selected this point (if manual override).
+        selected_at (datetime): When this point was selected/canonicalized.
+        created_at (datetime): When the canonical point record was created.
+        updated_at (datetime): When the canonical point record was last updated.
+
+    Note:
+        - Currency comes from curve.currency, not stored here to avoid inconsistency.
+        - This is the single source of truth for yield curves - only one point per curve/tenor_days/date.
+        - Points are selected from observations via canonicalization process.
+        - Manual overrides are tracked for audit purposes.
+        - Rate is stored as a percentage (e.g., 5.50 for 5.5%). For calculations, divide by 100.
+        - Selection algorithm: filter by (curve, tenor_days, date), keep active sources only,
+          sort by source priority (asc), revision (desc), observed_at (desc), choose first.
+
+    Example:
+        >>> curve = YieldCurve.objects.get(name="XAF Government Curve")
+        >>> source = MarketDataSource.objects.get(code="BEAC")
+        >>> observation = YieldCurvePointObservation.objects.get(...)
+        >>> canonical_point = YieldCurvePoint.objects.create(
+        ...     curve=curve,
+        ...     tenor="5Y",
+        ...     tenor_days=1825,
+        ...     rate=5.50,
+        ...     date=date.today(),
+        ...     source=source,
+        ...     observation=observation,
+        ...     selection_reason=SelectionReason.AUTO_POLICY,
+        ...     selected_at=timezone.now()
+        ... )
+    """
+
+    curve = models.ForeignKey(
+        YieldCurve,
+        on_delete=models.CASCADE,
+        related_name="points",
+        verbose_name=_("Curve"),
+        help_text=_("The yield curve this point belongs to (REQUIRED)"),
+    )
+    tenor = models.CharField(
+        _("Tenor"),
+        max_length=10,
+        help_text=_(
+            "Tenor description for display (e.g., '1M', '3M', '1Y', '5Y', '10Y')"
+        ),
+    )
+    tenor_days = models.IntegerField(
+        _("Tenor Days"),
+        help_text=_(
+            "Tenor in days (e.g., 30 for 1M, 365 for 1Y, 1825 for 5Y) - REQUIRED"
+        ),
+    )
+    rate = models.DecimalField(
+        _("Rate"),
+        max_digits=8,
+        decimal_places=4,
+        help_text=_("Interest rate as percentage (e.g., 5.50 for 5.5%)"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this yield point is valid"),
+    )
+    chosen_source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="canonical_yield_curve_points",
+        verbose_name=_("Source"),
+        help_text=_("The source that was selected for this canonical point"),
+    )
+    observation = models.ForeignKey(
+        YieldCurvePointObservation,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="canonical_points",
+        verbose_name=_("Observation"),
+        help_text=_("The observation that was selected (optional, for audit trail)"),
+    )
+    selection_reason = models.CharField(
+        _("Selection Reason"),
+        max_length=20,
+        choices=SelectionReason.choices,
+        default=SelectionReason.AUTO_POLICY,
+        help_text=_("Why this point was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.)"),
+    )
+    selected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="selected_yield_curve_points",
+        verbose_name=_("Selected By"),
+        help_text=_("User who manually selected this point (if manual override)"),
+    )
+    selected_at = models.DateTimeField(
+        _("Selected At"),
+        help_text=_("When this point was selected/canonicalized"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Yield Curve Point")
+        verbose_name_plural = _("Yield Curve Points")
+        indexes = [
+            models.Index(fields=["curve", "tenor_days", "date"]),
+            models.Index(fields=["curve", "date"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["chosen_source"]),
+        ]
+        # One canonical point per curve/tenor_days/date (global, not org-scoped)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["curve", "tenor_days", "date"],
+                name="uniq_curve_tenor_days_date",
+            ),
+        ]
+        ordering = ["-date", "curve", "tenor_days"]
+
+    def __str__(self) -> str:
+        return f"{self.curve.name} {self.tenor} = {self.rate}% from {self.chosen_source.code} ({self.date})"
+
+
+class FXRateObservation(models.Model):
+    """
+    FXRateObservation model representing multi-source raw FX rate observations.
+
+    This is the ETL landing zone where raw FX rate data from various sources is stored.
+    Multiple observations can exist for the same currency pair/date from different
+    sources. The canonicalization process selects the best observation based on source
+    priority and creates a canonical FXRate record.
+
+    Attributes:
+        base_currency (str): Base currency code (e.g., "XAF").
+        quote_currency (str): Quote currency code (e.g., "USD").
+        rate (decimal): Exchange rate (1 base = rate quote).
+        rate_type (str): Type of FX rate (BUY, SELL, MID, OFFICIAL, FIXING).
+        date (date): Date for which this rate is valid.
+        source (MarketDataSource): The source of this FX rate observation.
+        revision (int): Revision number (0 = initial, 1+ = corrections).
+        observed_at (datetime): When this observation was received/recorded.
+        created_at (datetime): When the observation record was created.
+        updated_at (datetime): When the observation record was last updated.
+
+    Note:
+        Rate represents how many units of quote_currency equal 1 unit of base_currency.
+        For example, if base=XAF and quote=USD, rate=0.0016 means 1 XAF = 0.0016 USD.
+        BUY and SELL rates can be imported and canonicalized into MID rates.
+
+    Example:
+        >>> source = MarketDataSource.objects.get(code="BEAC")
+        >>> observation = FXRateObservation.objects.create(
+        ...     base_currency="XAF",
+        ...     quote_currency="USD",
+        ...     rate=0.0016,
+        ...     rate_type=FXRateObservation.RateType.BUY,
+        ...     date=date.today(),
+        ...     source=source,
+        ...     revision=0,
+        ...     observed_at=timezone.now()
+        ... )
+    """
+
+    class RateType(models.TextChoices):
+        """FX rate type choices."""
+
+        BUY = "buy", _("Buy")
+        SELL = "sell", _("Sell")
+        MID = "mid", _("Mid")
+        OFFICIAL = "official", _("Official")
+        FIXING = "fixing", _("Fixing")
+
+    base_currency = models.CharField(
+        _("Base Currency"),
+        max_length=3,
+        help_text=_("Base currency code (e.g., 'XAF')"),
+    )
+    quote_currency = models.CharField(
+        _("Quote Currency"),
+        max_length=3,
+        help_text=_("Quote currency code (e.g., 'USD')"),
+    )
+    rate = models.DecimalField(
+        _("Rate"),
+        max_digits=20,
+        decimal_places=8,
+        help_text=_("Exchange rate (1 base = rate quote)"),
+    )
+    rate_type = models.CharField(
+        _("Rate Type"),
+        max_length=20,
+        choices=RateType.choices,
+        default=RateType.MID,
+        help_text=_("Type of FX rate (MID, OFFICIAL, FIXING)"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this rate is valid"),
+    )
+    source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="fx_rate_observations",
+        verbose_name=_("Source"),
+    )
+    revision = models.SmallIntegerField(
+        _("Revision"),
+        default=0,
+        help_text=_("Revision number (0 = initial, 1+ = corrections)"),
+    )
+    observed_at = models.DateTimeField(
+        _("Observed At"),
+        help_text=_("When this observation was received/recorded"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("FX Rate Observation")
+        verbose_name_plural = _("FX Rate Observations")
+        indexes = [
+            models.Index(fields=["base_currency", "quote_currency", "date"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["source", "date"]),
+            models.Index(fields=["observed_at"]),
+        ]
+        # Multiple observations per currency pair/date/rate_type/source/revision are allowed
+        unique_together = [
+            [
+                "base_currency",
+                "quote_currency",
+                "date",
+                "rate_type",
+                "source",
+                "revision",
+            ]
+        ]
+        ordering = ["-date", "base_currency", "quote_currency", "-observed_at"]
+
+    def __str__(self) -> str:
+        return f"{self.base_currency}/{self.quote_currency} = {self.rate} ({self.rate_type}) from {self.source.code} ({self.date})"
+
+
+class FXRate(models.Model):
+    """
+    FXRate model representing canonical "chosen" FX rates for currency conversion.
+
+    This is the canonical FX rate table used for portfolio valuation and currency conversion.
+    Rates are selected from FXRateObservation based on source priority hierarchy. This table
+    stores one rate per currency pair/date/rate_type - the "best" rate according to the
+    selection policy.
+
+    Attributes:
+        base_currency (str): Base currency code (e.g., "XAF").
+        quote_currency (str): Quote currency code (e.g., "USD").
+        rate (decimal): Exchange rate (1 base = rate quote).
+        rate_type (str): Type of FX rate (MID, OFFICIAL, FIXING).
+        date (date): Date for which this rate is valid.
+        chosen_source (MarketDataSource): The source that was selected for this canonical rate.
+        observation (FXRateObservation, optional): The observation that was selected.
+        selection_reason (str): Why this rate was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.).
+        selected_by (User, optional): User who manually selected this rate (if manual override).
+        selected_at (datetime): When this rate was selected/canonicalized.
+        created_at (datetime): When the canonical rate record was created.
+        updated_at (datetime): When the canonical rate record was last updated.
+
+    Note:
+        - This is the single source of truth for FX conversion - only one rate per currency pair/date/rate_type.
+        - Rates are selected from observations via canonicalization process.
+        - Manual overrides are tracked for audit purposes.
+        - Selection algorithm: filter by (base_currency, quote_currency, date, rate_type),
+          keep active sources only, sort by source priority (asc), revision (desc),
+          observed_at (desc), choose first.
+        - Constraints: If selection_reason != MANUAL_OVERRIDE, observation must not be null.
+          If selection_reason == MANUAL_OVERRIDE, selected_by must not be null.
+
+    Example:
+        >>> source = MarketDataSource.objects.get(code="BEAC")
+        >>> observation = FXRateObservation.objects.get(...)
+        >>> canonical_rate = FXRate.objects.create(
+        ...     base_currency="XAF",
+        ...     quote_currency="USD",
+        ...     rate=0.0016,
+        ...     rate_type=FXRate.RateType.OFFICIAL,
+        ...     date=date.today(),
+        ...     chosen_source=source,
+        ...     observation=observation,
+        ...     selection_reason=SelectionReason.AUTO_POLICY,
+        ...     selected_at=timezone.now()
+        ... )
+    """
+
+    class RateType(models.TextChoices):
+        """FX rate type choices."""
+
+        MID = "mid", _("Mid")
+        OFFICIAL = "official", _("Official")
+        FIXING = "fixing", _("Fixing")
+
+    base_currency = models.CharField(
+        _("Base Currency"),
+        max_length=3,
+        help_text=_("Base currency code (e.g., 'XAF')"),
+    )
+    quote_currency = models.CharField(
+        _("Quote Currency"),
+        max_length=3,
+        help_text=_("Quote currency code (e.g., 'USD')"),
+    )
+    rate = models.DecimalField(
+        _("Rate"),
+        max_digits=20,
+        decimal_places=8,
+        help_text=_("Exchange rate (1 base = rate quote)"),
+    )
+    rate_type = models.CharField(
+        _("Rate Type"),
+        max_length=20,
+        choices=RateType.choices,
+        default=RateType.MID,
+        help_text=_("Type of FX rate (MID, OFFICIAL, FIXING)"),
+    )
+    date = models.DateField(
+        _("Date"),
+        help_text=_("Date for which this rate is valid"),
+    )
+    chosen_source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="canonical_fx_rates",
+        verbose_name=_("Chosen Source"),
+        help_text=_("The source that was selected for this canonical rate"),
+    )
+    observation = models.ForeignKey(
+        FXRateObservation,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="canonical_fx_rates",
+        verbose_name=_("Observation"),
+        help_text=_("The observation that was selected (optional, for audit trail)"),
+    )
+    selection_reason = models.CharField(
+        _("Selection Reason"),
+        max_length=20,
+        choices=SelectionReason.choices,
+        default=SelectionReason.AUTO_POLICY,
+        help_text=_("Why this rate was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.)"),
+    )
+    selected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="selected_fx_rates",
+        verbose_name=_("Selected By"),
+        help_text=_("User who manually selected this rate (if manual override)"),
+    )
+    selected_at = models.DateTimeField(
+        _("Selected At"),
+        help_text=_("When this rate was selected/canonicalized"),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("FX Rate")
+        verbose_name_plural = _("FX Rates")
+        indexes = [
+            models.Index(fields=["base_currency", "quote_currency", "date"]),
+            models.Index(fields=["date"]),
+            models.Index(fields=["base_currency"]),
+            models.Index(fields=["quote_currency"]),
+            models.Index(fields=["rate_type"]),
+            models.Index(fields=["chosen_source"]),
+        ]
+        # One canonical rate per currency pair/date/rate_type (global, not org-scoped)
+        constraints = [
+            models.UniqueConstraint(
+                fields=["base_currency", "quote_currency", "date", "rate_type"],
+                name="uniq_fx_rate_currency_pair_date_type",
+            ),
+        ]
+        ordering = ["-date", "base_currency", "quote_currency"]
+
+    def clean(self):
+        """
+        Validate that canonical rates are always traceable unless explicitly manual override.
+
+        Raises:
+            ValidationError: If constraints are violated.
+        """
+        from django.core.exceptions import ValidationError
+
+        super().clean()
+
+        # If not manual override, observation must exist
+        if (
+            self.selection_reason != SelectionReason.MANUAL_OVERRIDE
+            and not self.observation
+        ):
+            raise ValidationError(
+                {
+                    "observation": "Observation is required when selection_reason is not MANUAL_OVERRIDE."
+                }
+            )
+
+        # If manual override, selected_by must exist
+        if (
+            self.selection_reason == SelectionReason.MANUAL_OVERRIDE
+            and not self.selected_by
+        ):
+            raise ValidationError(
+                {
+                    "selected_by": "Selected by user is required when selection_reason is MANUAL_OVERRIDE."
+                }
+            )
+
+        # If observation exists, validate source consistency
+        if self.observation and self.chosen_source != self.observation.source:
+            raise ValidationError(
+                {
+                    "chosen_source": "Chosen source must match observation source when observation is provided."
+                }
+            )
+
+    def save(self, *args, **kwargs):
+        """Override save to ensure clean() is called."""
+        self.full_clean()
+        super().save(*args, **kwargs)
+
+    def __str__(self) -> str:
+        return f"{self.base_currency}/{self.quote_currency} = {self.rate} ({self.rate_type}) from {self.chosen_source.code} ({self.date})"
+
+
+class YieldCurveImport(models.Model):
+    """
+    YieldCurveImport model tracking file uploads and import status.
+
+    Tracks the import of yield curve data from uploaded Excel files.
+    Stores the file reference, import status, and error information.
+    Files are stored in media storage (works with local and S3/R2).
+
+    Note: This model is NOT organization-scoped because yield curves
+    are global reference data shared across all organizations.
+
+    Attributes:
+        source (MarketDataSource): The market data source (e.g., BEAC).
+        curve (YieldCurve, optional): Specific curve to import (if None, imports all curves in file).
+        file (FileField): Uploaded Excel file.
+        sheet_name (str, optional): Sheet name if file has multiple sheets.
+        status (str): Current import status (pending, importing, success, failed).
+        error_message (str, optional): Error message if import failed.
+        observations_created (int): Number of observations created.
+        observations_updated (int): Number of observations updated.
+        canonical_points_created (int): Number of canonical points created (if canonicalized).
+        created_at (datetime): When the import was created.
+        completed_at (datetime, optional): When the import completed.
+        created_by (User, optional): User who created this import.
+    """
+
+    source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="yield_curve_imports",
+        verbose_name=_("Source"),
+        help_text="Market data source (e.g., BEAC).",
+    )
+    curve = models.ForeignKey(
+        YieldCurve,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="imports",
+        verbose_name=_("Curve"),
+        help_text="Specific curve to import (if None, imports all curves in file).",
+    )
+    file = models.FileField(
+        _("File"),
+        upload_to="market_data/yield_curves/%Y/%m/",
+        help_text="Uploaded Excel file with yield curve data.",
+    )
+    sheet_name = models.CharField(
+        _("Sheet Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Sheet name if file has multiple sheets (e.g., 'CM', 'GA', 'CG').",
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=ImportStatus.choices,
+        default=ImportStatus.PENDING,
+        help_text="Current import status.",
+    )
+    error_message = models.TextField(
+        _("Error Message"),
+        blank=True,
+        null=True,
+        help_text="Error message if import failed.",
+    )
+    observations_created = models.IntegerField(
+        _("Observations Created"),
+        default=0,
+        help_text="Number of observations created.",
+    )
+    observations_updated = models.IntegerField(
+        _("Observations Updated"),
+        default=0,
+        help_text="Number of observations updated.",
+    )
+    canonical_points_created = models.IntegerField(
+        _("Canonical Points Created"),
+        default=0,
+        help_text="Number of canonical points created (if canonicalized).",
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    completed_at = models.DateTimeField(
+        _("Completed At"),
+        blank=True,
+        null=True,
+        help_text="When the import completed.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="yield_curve_imports",
+        verbose_name=_("Created By"),
+        help_text="User who created this import.",
+    )
+
+    class Meta:
+        verbose_name = _("Yield Curve Import")
+        verbose_name_plural = _("Yield Curve Imports")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["source", "status"]),
+            models.Index(fields=["curve", "status"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        curve_name = self.curve.name if self.curve else "All Curves"
+        return f"{self.source.code} - {curve_name} ({self.get_status_display()})"
+
+
+class FXRateImport(models.Model):
+    """
+    FXRateImport model tracking file uploads and import status.
+
+    Tracks the import of FX rate data from uploaded Excel files.
+    Stores the file reference, import status, and error information.
+    Files are stored in media storage (works with local and S3/R2).
+
+    Note: This model is NOT organization-scoped because FX rates
+    are global reference data shared across all organizations.
+
+    Attributes:
+        source (MarketDataSource): The market data source (e.g., BEAC).
+        file (FileField): Uploaded Excel file.
+        sheet_name (str, optional): Sheet name if file has multiple sheets.
+        status (str): Current import status (pending, importing, success, failed).
+        error_message (str, optional): Error message if import failed.
+        observations_created (int): Number of observations created.
+        observations_updated (int): Number of observations updated.
+        canonical_rates_created (int): Number of canonical rates created (if canonicalized).
+        created_at (datetime): When the import was created.
+        completed_at (datetime, optional): When the import completed.
+        created_by (User, optional): User who created this import.
+    """
+
+    source = models.ForeignKey(
+        MarketDataSource,
+        on_delete=models.PROTECT,
+        related_name="fx_rate_imports",
+        verbose_name=_("Source"),
+        help_text="Market data source (e.g., BEAC).",
+    )
+    file = models.FileField(
+        _("File"),
+        upload_to="market_data/fx_rates/%Y/%m/",
+        help_text="Uploaded Excel file with FX rate data.",
+    )
+    sheet_name = models.CharField(
+        _("Sheet Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Sheet name if file has multiple sheets.",
+    )
+    status = models.CharField(
+        _("Status"),
+        max_length=20,
+        choices=ImportStatus.choices,
+        default=ImportStatus.PENDING,
+        help_text="Current import status.",
+    )
+    error_message = models.TextField(
+        _("Error Message"),
+        blank=True,
+        null=True,
+        help_text="Error message if import failed.",
+    )
+    observations_created = models.IntegerField(
+        _("Observations Created"),
+        default=0,
+        help_text="Number of observations created.",
+    )
+    observations_updated = models.IntegerField(
+        _("Observations Updated"),
+        default=0,
+        help_text="Number of observations updated.",
+    )
+    canonical_rates_created = models.IntegerField(
+        _("Canonical Rates Created"),
+        default=0,
+        help_text="Number of canonical rates created (if canonicalized).",
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    completed_at = models.DateTimeField(
+        _("Completed At"),
+        blank=True,
+        null=True,
+        help_text="When the import completed.",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        blank=True,
+        null=True,
+        related_name="fx_rate_imports",
+        verbose_name=_("Created By"),
+        help_text="User who created this import.",
+    )
+
+    class Meta:
+        verbose_name = _("FX Rate Import")
+        verbose_name_plural = _("FX Rate Imports")
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["source", "status"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.source.code} - FX Rates ({self.get_status_display()})"
