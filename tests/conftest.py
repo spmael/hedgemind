@@ -35,6 +35,7 @@ from tests.factories import (  # noqa: E402
     OrganizationMemberViewerFactory,
     PortfolioFactory,
     PortfolioGroupFactory,
+    PortfolioImportErrorFactory,
     PortfolioImportFactory,
     PositionSnapshotFactory,
     PrivateAssetInstrumentFactory,
@@ -231,6 +232,12 @@ def portfolio_import(org_context_with_org, portfolio):
 
 
 @pytest.fixture
+def portfolio_import_error(org_context_with_org, portfolio_import):
+    """Fixture to create a PortfolioImportError instance."""
+    return PortfolioImportErrorFactory(portfolio_import=portfolio_import)
+
+
+@pytest.fixture
 def position_snapshot(org_context_with_org, portfolio, instrument):
     """Fixture to create a PositionSnapshot instance."""
     return PositionSnapshotFactory(portfolio=portfolio, instrument=instrument)
@@ -318,7 +325,9 @@ def market_index():
 @pytest.fixture
 def market_index_value_observation(market_index, market_data_source):
     """Fixture to create a MarketIndexValueObservation instance."""
-    return MarketIndexValueObservationFactory(index=market_index, source=market_data_source)
+    return MarketIndexValueObservationFactory(
+        index=market_index, source=market_data_source
+    )
 
 
 @pytest.fixture

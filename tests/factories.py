@@ -19,6 +19,7 @@ from apps.portfolios.models import (
     Portfolio,
     PortfolioGroup,
     PortfolioImport,
+    PortfolioImportError,
     PositionSnapshot,
     ValuationSource,
 )
@@ -283,6 +284,28 @@ class PortfolioImportFactory(factory.django.DjangoModelFactory):
     # Note: organization is set automatically via OrganizationOwnedModel
     # when created within organization_context
     # Note: file field requires actual file upload in tests
+
+
+class PortfolioImportErrorFactory(factory.django.DjangoModelFactory):
+    """Factory for creating PortfolioImportError test instances."""
+
+    class Meta:
+        model = PortfolioImportError
+
+    portfolio_import = factory.SubFactory(PortfolioImportFactory)
+    row_number = factory.Sequence(lambda n: n + 2)  # 1-indexed, +1 for header
+    raw_row_data = factory.LazyFunction(
+        lambda: {"column1": "value1", "column2": "value2"}
+    )
+    error_type = "validation"
+    error_message = factory.Faker("sentence")
+    error_code = "TEST_ERROR"
+
+    # Optional fields
+    column_name = None
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
 
 
 def _make_money(amount_range=(1000, 10000000), currency=None):

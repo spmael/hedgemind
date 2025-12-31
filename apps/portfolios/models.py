@@ -256,6 +256,85 @@ class PortfolioImport(OrganizationOwnedModel):
         )
 
 
+class PortfolioImportError(OrganizationOwnedModel):
+    """
+    Row-level error tracking for portfolio imports.
+
+    Stores individual row errors during CSV/XLSX parsing and validation.
+    This enables detailed error reporting and debugging while maintaining
+    provenance of which rows failed and why.
+
+    Attributes:
+        portfolio_import (PortfolioImport): The import this error belongs to.
+        row_number (int): Row number in the source file (1-indexed, includes header).
+        column_name (str, optional): Column name where error occurred.
+        raw_row_data (JSONField): Original row data as dict for debugging.
+        error_type (str): Type of error (validation, mapping, reference_data, etc.).
+        error_message (str): Human-readable error message.
+        error_code (str, optional): Machine-readable error code for programmatic handling.
+        created_at (datetime): When the error was recorded.
+    """
+
+    portfolio_import = models.ForeignKey(
+        PortfolioImport,
+        on_delete=models.CASCADE,
+        related_name="errors",
+        help_text="Import this error belongs to.",
+    )
+    row_number = models.IntegerField(
+        _("Row Number"),
+        help_text="Row number in source file (1-indexed, includes header).",
+    )
+    column_name = models.CharField(
+        _("Column Name"),
+        max_length=255,
+        blank=True,
+        null=True,
+        help_text="Column where error occurred (if applicable).",
+    )
+    raw_row_data = models.JSONField(
+        _("Raw Row Data"),
+        help_text="Original row data as dict for debugging.",
+    )
+    error_type = models.CharField(
+        _("Error Type"),
+        max_length=50,
+        choices=[
+            ("validation", _("Validation Error")),
+            ("mapping", _("Mapping Error")),
+            ("reference_data", _("Reference Data Missing")),
+            ("format", _("Format Error")),
+            ("business_rule", _("Business Rule Violation")),
+            ("system", _("System Error")),
+        ],
+        help_text="Type of error.",
+    )
+    error_message = models.TextField(
+        _("Error Message"),
+        help_text="Human-readable error message.",
+    )
+    error_code = models.CharField(
+        _("Error Code"),
+        max_length=50,
+        blank=True,
+        null=True,
+        help_text="Machine-readable error code.",
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Portfolio Import Error")
+        verbose_name_plural = _("Portfolio Import Errors")
+        ordering = ["portfolio_import", "row_number"]
+        indexes = [
+            models.Index(fields=["organization", "portfolio_import", "row_number"]),
+            models.Index(fields=["organization", "portfolio_import", "error_type"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"Row {self.row_number}: {self.error_message}"
+
+
 class ValuationSource(models.TextChoices):
     """Valuation source choices for position snapshots."""
 
@@ -366,6 +445,8 @@ class PositionSnapshot(OrganizationOwnedModel):
         _("Price"),
         max_digits=20,
         decimal_places=6,
+        blank=True,
+        null=True,
         help_text="Price per unit used for valuation.",
     )
     accrued_interest = MoneyField(
