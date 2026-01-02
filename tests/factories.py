@@ -41,6 +41,7 @@ from apps.reference_data.models import (
     InstrumentPriceObservation,
     InstrumentType,
     Issuer,
+    IssuerGroup,
     IssuerRating,
     MarketDataSource,
     MarketIndex,
@@ -144,6 +145,50 @@ class InstrumentTypeFactory(factory.django.DjangoModelFactory):
     description = factory.Faker("text", max_nb_chars=200)
 
 
+class IssuerGroupFactory(factory.django.DjangoModelFactory):
+    """Factory for creating IssuerGroup test instances."""
+
+    class Meta:
+        model = IssuerGroup
+
+    name = factory.Iterator(["Sovereign", "Corporate", "Financial Institution", "Bank"])
+    code = factory.LazyAttribute(
+        lambda obj: {
+            "Sovereign": "SOV",
+            "Corporate": "CORP",
+            "Financial Institution": "FIN",
+            "Bank": "BANK",
+        }.get(obj.name, "CORP")
+    )
+    description = factory.Faker("text", max_nb_chars=200)
+    is_active = True
+    sort_order = factory.Sequence(lambda n: n * 10)
+
+    @classmethod
+    def _create(cls, model_class, *args, **kwargs):
+        """Override to handle unique code constraint using get_or_create."""
+        code = kwargs.get("code")
+        if code:
+            # Use get_or_create to avoid duplicate codes
+            issuer_group, created = IssuerGroup.objects.get_or_create(
+                code=code,
+                defaults={
+                    "name": kwargs.get("name", f"IssuerGroup {code}"),
+                    "description": kwargs.get("description", ""),
+                    "is_active": kwargs.get("is_active", True),
+                    "sort_order": kwargs.get("sort_order", 0),
+                },
+            )
+            # Update fields if not created
+            if not created:
+                for key, value in kwargs.items():
+                    if key != "code":  # Don't update code
+                        setattr(issuer_group, key, value)
+                issuer_group.save()
+            return issuer_group
+        return super()._create(model_class, *args, **kwargs)
+
+
 class IssuerFactory(factory.django.DjangoModelFactory):
     """Factory for creating Issuer test instances."""
 
@@ -153,7 +198,7 @@ class IssuerFactory(factory.django.DjangoModelFactory):
     name = factory.Sequence(lambda n: f"Issuer {n}")
     short_name = factory.LazyAttribute(lambda obj: obj.name[:20])
     country = factory.Faker("country_code")
-    issuer_group = factory.Iterator(["Sovereign", "Corporate", "Financial Institution"])
+    issuer_group = factory.SubFactory(IssuerGroupFactory)
     is_active = True
 
     # Note: organization is set automatically via OrganizationOwnedModel

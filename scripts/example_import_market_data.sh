@@ -19,9 +19,12 @@
 set -e  # Exit on error
 
 # Configuration
-ORG_ID=1
+ORG_SLUG="cemac-bank"  # Organization slug (e.g., 'cemac-bank')
+# Alternative: ORG_CODE="CEMACBANK"  # Organization code_name
+# Alternative: ORG_ID=1  # Organization ID (numeric)
 AS_OF_DATE=${1:-$(date +%Y-%m-%d)}  # Use provided date or today's date
-ACTOR_ID=1  # Optional: User ID for audit log
+ACTOR_USERNAME="admin"  # Optional: Username for audit log
+# Alternative: ACTOR_ID=1  # Optional: User ID for audit log
 
 # File paths (adjust as needed)
 PRICES_FILE="./scripts/data/prices_${AS_OF_DATE//-/_}.xlsx"
@@ -37,7 +40,7 @@ YIELD_CURVE_NAME="XAF_SOVEREIGN"
 echo "=========================================="
 echo "Importing Market Data"
 echo "=========================================="
-echo "Organization ID: $ORG_ID"
+echo "Organization: $ORG_SLUG"
 echo "As-of Date: $AS_OF_DATE"
 echo ""
 
@@ -48,9 +51,9 @@ if [ -f "$PRICES_FILE" ]; then
         --file "$PRICES_FILE" \
         --source-code "$PRICES_SOURCE" \
         --sheet "PRICES" \
-        --org-id "$ORG_ID" \
+        --org-slug "$ORG_SLUG" \
         --revision 0 \
-        --actor-id "$ACTOR_ID" \
+        --actor-username "$ACTOR_USERNAME" \
         --canonicalize
     echo "✓ Prices imported"
 else
@@ -66,9 +69,9 @@ if [ -f "$FX_RATES_FILE" ]; then
         --file "$FX_RATES_FILE" \
         --source-code "$FX_SOURCE" \
         --sheet "FX_RATES" \
-        --org-id "$ORG_ID" \
+        --org-slug "$ORG_SLUG" \
         --revision 0 \
-        --actor-id "$ACTOR_ID" \
+        --actor-username "$ACTOR_USERNAME" \
         --canonicalize
     echo "✓ FX rates imported"
 else
@@ -85,9 +88,9 @@ if [ -f "$YIELD_CURVES_FILE" ]; then
         --source-code "$YIELD_CURVE_SOURCE" \
         --yield-curve-name "$YIELD_CURVE_NAME" \
         --sheet "YIELD_CURVES" \
-        --org-id "$ORG_ID" \
+        --org-slug "$ORG_SLUG" \
         --revision 0 \
-        --actor-id "$ACTOR_ID" \
+        --actor-username "$ACTOR_USERNAME" \
         --canonicalize
     echo "✓ Yield curves imported"
 else

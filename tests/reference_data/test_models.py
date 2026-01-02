@@ -183,6 +183,226 @@ class TestIssuer:
         """Test that updated_at is automatically set."""
         assert issuer.updated_at is not None
 
+    def test_issuer_code_auto_generated(self, org_context_with_org):
+        """Test that issuer_code is auto-generated if not provided."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        # Create issuer group
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        issuer = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code=None,
+        )
+        assert issuer.issuer_code is not None
+        assert issuer.issuer_code.startswith("CM-SOV-")
+
+    def test_issuer_code_validation(self, org_context_with_org):
+        """Test that issuer_code format is validated."""
+        from django.core.exceptions import ValidationError
+
+        issuer = IssuerFactory()
+        issuer.issuer_code = "INVALID_FORMAT"
+        with pytest.raises(ValidationError):
+            issuer.full_clean()
+
+    def test_issuer_code_globally_unique(self, org_context_with_org):
+        """Test that issuer_code must be globally unique."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        _issuer1 = IssuerFactory(
+            name="Test Issuer 1",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code="CM-SOV-TEST1",
+        )
+
+        # Try to create another issuer with same code
+        with pytest.raises(IntegrityError):
+            IssuerFactory(
+                name="Test Issuer 2",
+                country="CM",
+                issuer_group=issuer_group,
+                issuer_code="CM-SOV-TEST1",
+            )
+
+    def test_issuer_code_conflict_resolution(self, org_context_with_org):
+        """Test that issuer code conflicts are resolved by appending numbers."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        # Create first issuer and manually set its code to force a conflict scenario
+        issuer1 = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code="CM-SOV-GOVT",  # Manually set to create conflict
+        )
+        code1 = issuer1.issuer_code
+
+        # Create second issuer with different name but same country/group
+        # This will try to generate "CM-SOV-GOVT" but that's taken, so should get "CM-SOV-GOVT1"
+        issuer2 = IssuerFactory(
+            name="REPUBLIQUE DU CAMEROUN",  # Different name, but generates same GOVT identifier
+            country="CM",
+            issuer_group=issuer_group,
+        )
+        code2 = issuer2.issuer_code
+
+        assert code1 != code2, f"Codes should be different: {code1} vs {code2}"
+        assert code1 == "CM-SOV-GOVT", f"First code should be CM-SOV-GOVT, got {code1}"
+        assert code2.startswith(
+            "CM-SOV-"
+        ), f"Second code should start with CM-SOV-, got {code2}"
+        # Second code should have conflict resolution (number appended or identifier modified)
+        assert "GOVT" in code2 or code2.endswith("1") or len(code2.split("-")[2]) > 4
+
+    def test_issuer_code_not_regenerated_if_provided(self, org_context_with_org):
+        """Test that issuer_code is not regenerated if manually provided."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        custom_code = "CM-SOV-CUSTOM"
+        issuer = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code=custom_code,
+        )
+        assert issuer.issuer_code == custom_code
+
+    def test_issuer_code_regenerated_on_update_if_missing(self, org_context_with_org):
+        """Test that issuer_code is generated when issuer is updated without code."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        # Create issuer without code (should auto-generate)
+        issuer = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code=None,
+        )
+        assert issuer.issuer_code is not None
+        assert issuer.issuer_code.startswith("CM-SOV-")
+
+        # Clear code and save again (should regenerate)
+        issuer.issuer_code = None
+        issuer.save()
+        assert issuer.issuer_code is not None
+        assert issuer.issuer_code.startswith("CM-SOV-")
+
+    def test_issuer_code_generation_with_different_groups(self, org_context_with_org):
+        """Test code generation with different issuer groups."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        sov_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+        bank_group = IssuerGroup.objects.create(code="BANK", name="Bank")
+
+        issuer1 = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=sov_group,
+        )
+        issuer2 = IssuerFactory(
+            name="BANQUE DE GABON",
+            country="GA",
+            issuer_group=bank_group,
+        )
+
+        assert issuer1.issuer_code.startswith("CM-SOV-")
+        assert issuer2.issuer_code.startswith("GA-BNK-")
+
+    def test_issuer_code_generation_with_different_countries(
+        self, org_context_with_org
+    ):
+        """Test code generation with different countries."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+
+        issuer1 = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+        )
+        issuer2 = IssuerFactory(
+            name="ETAT DU GABON",
+            country="GA",
+            issuer_group=issuer_group,
+        )
+
+        assert issuer1.issuer_code.startswith("CM-SOV-")
+        assert issuer2.issuer_code.startswith("GA-SOV-")
+
+    def test_issuer_code_generation_without_country(self, org_context_with_org):
+        """Test code generation defaults to INT when country is missing."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="CORP", name="Corporate")
+        issuer = IssuerFactory(
+            name="Test Company",
+            country=None,
+            issuer_group=issuer_group,
+        )
+        assert issuer.issuer_code.startswith("INT-COR-")
+
+    def test_issuer_code_generation_without_group(self, org_context_with_org):
+        """Test code generation defaults to COR when issuer_group is missing."""
+        issuer = IssuerFactory(
+            name="Test Company",
+            country="CM",
+            issuer_group=None,
+        )
+        assert issuer.issuer_code.startswith("CM-COR-")
+
+    def test_issuer_code_validation_on_save(self, org_context_with_org):
+        """Test that invalid issuer_code raises ValidationError on save."""
+        from django.core.exceptions import ValidationError
+
+        issuer = IssuerFactory()
+        issuer.issuer_code = "INVALID-FORMAT"
+        with pytest.raises(ValidationError):
+            issuer.save()
+
+    def test_issuer_code_multiple_conflicts_resolved(self, org_context_with_org):
+        """Test that multiple conflicts are resolved sequentially."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        issuer_group = IssuerGroup.objects.create(code="SOV", name="Sovereign")
+
+        # Create first issuer with a specific code
+        issuer1 = IssuerFactory(
+            name="ETAT DU CAMEROUN",
+            country="CM",
+            issuer_group=issuer_group,
+            issuer_code="CM-SOV-GOVT",
+        )
+
+        # Create multiple issuers with different names but same country/group
+        # They will generate same base code "GOVT" and trigger conflict resolution
+        issuers = [issuer1]
+        sovereign_names = [
+            "REPUBLIQUE DU CAMEROUN",
+            "REPUBLIQUE DE CAMEROUN",
+            "ETAT DE CAMEROUN",
+            "REPUBLIC OF CAMEROON",
+        ]
+        for name in sovereign_names:
+            issuer = IssuerFactory(
+                name=name,  # Different names to avoid unique constraint, but all generate "GOVT"
+                country="CM",
+                issuer_group=issuer_group,
+            )
+            issuers.append(issuer)
+
+        # All should have unique codes (conflict resolution should append numbers)
+        codes = [issuer.issuer_code for issuer in issuers]
+        assert len(codes) == len(set(codes)), f"Codes should be unique: {codes}"
+        assert all(code.startswith("CM-SOV-") for code in codes)
+
 
 class TestIssuerRating:
     """Test cases for IssuerRating model."""
@@ -980,7 +1200,9 @@ class TestMarketIndexConstituent:
         )
         assert constituent.shares is None
 
-    def test_market_index_constituent_float_shares_optional(self, market_index, instrument):
+    def test_market_index_constituent_float_shares_optional(
+        self, market_index, instrument
+    ):
         """Test that float_shares is optional."""
         constituent = MarketIndexConstituentFactory(
             index=market_index, instrument=instrument, float_shares=None
@@ -994,10 +1216,15 @@ class TestMarketIndexConstituent:
         )
         assert constituent.source is None
 
-    def test_market_index_constituent_relationship_to_index(self, market_index_constituent):
+    def test_market_index_constituent_relationship_to_index(
+        self, market_index_constituent
+    ):
         """Test that constituent has correct relationship to index."""
         assert market_index_constituent.index is not None
-        assert market_index_constituent in market_index_constituent.index.constituents.all()
+        assert (
+            market_index_constituent
+            in market_index_constituent.index.constituents.all()
+        )
 
     def test_market_index_constituent_relationship_to_instrument(
         self, market_index_constituent

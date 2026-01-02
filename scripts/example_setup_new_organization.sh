@@ -10,22 +10,25 @@
 #   4. Importing initial market data
 #
 # Usage:
-#   ./scripts/example_setup_new_organization.sh [ORG_ID]
+#   ./scripts/example_setup_new_organization.sh [ORG_SLUG]
 #
 # Example:
-#   ./scripts/example_setup_new_organization.sh 1
+#   ./scripts/example_setup_new_organization.sh cemac-bank
 #
 
 set -e  # Exit on error
 
 # Configuration
-ORG_ID=${1:-1}  # Use provided org ID or default to 1
-ACTOR_ID=1  # Optional: User ID for audit log
+ORG_SLUG=${1:-"cemac-bank"}  # Use provided org slug or default
+# Alternative: ORG_CODE="CEMACBANK"  # Organization code_name
+# Alternative: ORG_ID=1  # Organization ID (numeric)
+ACTOR_USERNAME="admin"  # Optional: Username for audit log
+# Alternative: ACTOR_ID=1  # Optional: User ID for audit log
 
 echo "=========================================="
 echo "Setting Up New Organization"
 echo "=========================================="
-echo "Organization ID: $ORG_ID"
+echo "Organization: $ORG_SLUG"
 echo ""
 
 # Step 1: Load taxonomies
@@ -56,8 +59,8 @@ if [ -f "$ISSUERS_FILE" ]; then
     python manage.py import_issuers_excel \
         --file "$ISSUERS_FILE" \
         --sheet "ISSUERS" \
-        --org-id "$ORG_ID" \
-        --actor-id "$ACTOR_ID"
+        --org-slug "$ORG_SLUG" \
+        --actor-username "$ACTOR_USERNAME"
     echo "✓ Issuers imported"
 else
     echo "⚠ Skipping issuers import (file not found: $ISSUERS_FILE)"
@@ -75,8 +78,8 @@ if [ -f "$INSTRUMENTS_FILE" ]; then
     python manage.py import_instruments_excel \
         --file "$INSTRUMENTS_FILE" \
         --sheet "INSTRUMENTS" \
-        --org-id "$ORG_ID" \
-        --actor-id "$ACTOR_ID"
+        --org-slug "$ORG_SLUG" \
+        --actor-username "$ACTOR_USERNAME"
     echo "✓ Instruments imported"
 else
     echo "⚠ Skipping instruments import (file not found: $INSTRUMENTS_FILE)"

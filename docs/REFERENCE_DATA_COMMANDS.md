@@ -64,14 +64,19 @@ Reference data commands are used to import and manage master data (instruments, 
 python manage.py import_issuers_excel \
     --file ./data/issuers_master.xlsx \
     --sheet ISSUERS \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Arguments**:
 - `--file` (required): Path to Excel file
 - `--sheet` (optional): Sheet name (default: "ISSUERS")
-- `--org-id` (required): Organization ID
+- `--org-id` (optional): Organization ID (numeric)
+- `--org-slug` (optional): Organization slug (e.g., 'cemac-bank')
+- `--org-code` (optional): Organization code_name (e.g., 'CEMACBANK')
 - `--actor-id` (optional): User ID for audit log
+- `--actor-username` (optional): Username for audit log
+
+**Note**: Provide one of `--org-id`, `--org-slug`, or `--org-code` (required). Provide one of `--actor-id` or `--actor-username` (optional).
 
 **Excel Format**:
 | name | short_name | country | issuer_group |
@@ -84,8 +89,8 @@ python manage.py import_issuers_excel \
 python manage.py import_issuers_excel \
     --file ./scripts/data/issuers_master.xlsx \
     --sheet Sheet1 \
-    --org-id 1 \
-    --actor-id 1
+    --org-slug cemac-bank \
+    --actor-username admin
 ```
 
 **Output**:
@@ -105,14 +110,19 @@ python manage.py import_issuers_excel \
 python manage.py import_instruments_excel \
     --file ./data/instruments_master.xlsx \
     --sheet INSTRUMENTS \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Arguments**:
 - `--file` (required): Path to Excel file
 - `--sheet` (optional): Sheet name (default: "INSTRUMENTS")
-- `--org-id` (required): Organization ID
+- `--org-id` (optional): Organization ID (numeric)
+- `--org-slug` (optional): Organization slug (e.g., 'cemac-bank')
+- `--org-code` (optional): Organization code_name (e.g., 'CEMACBANK')
 - `--actor-id` (optional): User ID for audit log
+- `--actor-username` (optional): Username for audit log
+
+**Note**: Provide one of `--org-id`, `--org-slug`, or `--org-code` (required). Provide one of `--actor-id` or `--actor-username` (optional).
 
 **Excel Format**:
 | instrument_identifier | name | instrument_group_code | instrument_type_code | currency | issuer_code | valuation_method | isin | ticker | country | sector |
@@ -124,8 +134,8 @@ python manage.py import_instruments_excel \
 python manage.py import_instruments_excel \
     --file ./scripts/data/instruments_master.xlsx \
     --sheet Sheet1 \
-    --org-id 1 \
-    --actor-id 1
+    --org-slug cemac-bank \
+    --actor-username admin
 ```
 
 **Output**:
@@ -153,17 +163,22 @@ python manage.py import_instrument_prices_excel \
     --file ./data/prices.xlsx \
     --source-code BVMAC \
     --sheet PRICES \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Arguments**:
 - `--file` (required): Path to Excel file
 - `--source-code` (required): MarketDataSource code (e.g., "BVMAC", "BEAC", "MANUAL")
 - `--sheet` (optional): Sheet name (default: "PRICES")
-- `--org-id` (required): Organization ID
+- `--org-id` (optional): Organization ID (numeric)
+- `--org-slug` (optional): Organization slug (e.g., 'cemac-bank')
+- `--org-code` (optional): Organization code_name (e.g., 'CEMACBANK')
 - `--revision` (optional): Revision number (default: 0)
 - `--actor-id` (optional): User ID for audit log
+- `--actor-username` (optional): Username for audit log
 - `--canonicalize` (optional): Run canonicalization after import
+
+**Note**: Provide one of `--org-id`, `--org-slug`, or `--org-code` (required). Provide one of `--actor-id` or `--actor-username` (optional).
 
 **Excel Format**:
 | date | instrument_id | price | price_type | quote_convention | clean_or_dirty | Volume |
@@ -176,7 +191,7 @@ python manage.py import_instrument_prices_excel \
     --file ./scripts/data/prices_20250131.xlsx \
     --source-code BVMAC \
     --sheet PRICES \
-    --org-id 1 \
+    --org-slug cemac-bank \
     --revision 0 \
     --canonicalize
 ```
@@ -331,20 +346,25 @@ python manage.py import_index_levels_excel \
 ```bash
 python manage.py canonicalize_prices \
     --as-of-date 2025-01-31 \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Arguments**:
 - `--as-of-date` (required): Date to canonicalize (YYYY-MM-DD)
-- `--org-id` (required): Organization ID
+- `--org-id` (optional): Organization ID (numeric)
+- `--org-slug` (optional): Organization slug (e.g., 'cemac-bank')
+- `--org-code` (optional): Organization code_name (e.g., 'CEMACBANK')
 - `--actor-id` (optional): User ID for audit log
+- `--actor-username` (optional): Username for audit log
+
+**Note**: Provide one of `--org-id`, `--org-slug`, or `--org-code` (required). Provide one of `--actor-id` or `--actor-username` (optional).
 
 **Example**:
 ```bash
 python manage.py canonicalize_prices \
     --as-of-date 2025-01-31 \
-    --org-id 1 \
-    --actor-id 1
+    --org-slug cemac-bank \
+    --actor-username admin
 ```
 
 **Output**:
@@ -424,14 +444,14 @@ python manage.py sync_market_data_sources
 ```bash
 python manage.py import_issuers_excel \
     --file ./data/issuers_master.xlsx \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Step 3**: Import instruments
 ```bash
 python manage.py import_instruments_excel \
     --file ./data/instruments_master.xlsx \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Step 4**: Import market data (prices, FX rates, yield curves)
@@ -439,20 +459,18 @@ python manage.py import_instruments_excel \
 python manage.py import_instrument_prices_excel \
     --file ./data/prices.xlsx \
     --source-code BVMAC \
-    --org-id 1 \
+    --org-slug cemac-bank \
     --canonicalize
 
 python manage.py import_fx_rate_excel \
     --file ./data/fx_rates.xlsx \
     --source-code BEAC \
-    --org-id 1 \
     --canonicalize
 
 python manage.py import_yield_curve_excel \
     --file ./data/yield_curves.xlsx \
     --source-code BEAC \
     --yield-curve-name XAF_SOVEREIGN \
-    --org-id 1 \
     --canonicalize
 ```
 
@@ -463,7 +481,7 @@ python manage.py import_yield_curve_excel \
 python manage.py import_instrument_prices_excel \
     --file ./data/prices_20250131.xlsx \
     --source-code BVMAC \
-    --org-id 1 \
+    --org-slug cemac-bank \
     --canonicalize
 ```
 
@@ -472,7 +490,6 @@ python manage.py import_instrument_prices_excel \
 python manage.py import_fx_rate_excel \
     --file ./data/fx_rates_20250131.xlsx \
     --source-code BEAC \
-    --org-id 1 \
     --canonicalize
 ```
 
@@ -482,7 +499,6 @@ python manage.py import_yield_curve_excel \
     --file ./data/yield_curves_20250131.xlsx \
     --source-code BEAC \
     --yield-curve-name XAF_SOVEREIGN \
-    --org-id 1 \
     --canonicalize
 ```
 
@@ -490,7 +506,7 @@ python manage.py import_yield_curve_excel \
 ```bash
 python manage.py canonicalize_prices \
     --as-of-date 2025-01-31 \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 ### Workflow 3: Adding New Instruments
@@ -509,26 +525,39 @@ python manage.py canonicalize_prices \
 ```bash
 python manage.py import_instruments_excel \
     --file ./data/new_instruments.xlsx \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 **Step 4**: Verify import
 ```bash
 python manage.py shell
 >>> from apps.reference_data.models import Instrument
->>> Instrument.objects.filter(organization_id=1).count()
+>>> from apps.organizations.models import Organization
+>>> org = Organization.objects.get(slug='cemac-bank')
+>>> Instrument.objects.filter(organization_id=org.id).count()
 ```
 
 ## Troubleshooting
 
 ### Common Errors
 
-#### Error: "Organization context required"
+#### Error: "Organization identifier required"
 
-**Cause**: Command was run without `--org-id` parameter.
+**Cause**: Command was run without organization identifier.
 
-**Solution**: Always provide `--org-id` parameter:
+**Solution**: Provide one of `--org-id`, `--org-slug`, or `--org-code`:
 ```bash
+# Using slug (recommended)
+python manage.py import_instruments_excel \
+    --file ./data/instruments.xlsx \
+    --org-slug cemac-bank
+
+# Using code_name
+python manage.py import_instruments_excel \
+    --file ./data/instruments.xlsx \
+    --org-code CEMACBANK
+
+# Using numeric ID (still supported)
 python manage.py import_instruments_excel \
     --file ./data/instruments.xlsx \
     --org-id 1
@@ -567,7 +596,7 @@ python manage.py load_instrument_groups
 ```bash
 python manage.py import_issuers_excel \
     --file ./data/issuers.xlsx \
-    --org-id 1
+    --org-slug cemac-bank
 ```
 
 ---

@@ -16,15 +16,18 @@
 set -e  # Exit on error
 
 # Configuration
-ORG_ID=1
+ORG_SLUG="cemac-bank"  # Organization slug (e.g., 'cemac-bank')
+# Alternative: ORG_CODE="CEMACBANK"  # Organization code_name
+# Alternative: ORG_ID=1  # Organization ID (numeric)
 EXCEL_FILE="./scripts/data/instruments_master.xlsx"
 SHEET_NAME="INSTRUMENTS"
-ACTOR_ID=1  # Optional: User ID for audit log
+ACTOR_USERNAME="admin"  # Optional: Username for audit log
+# Alternative: ACTOR_ID=1  # Optional: User ID for audit log
 
 echo "=========================================="
 echo "Importing Instruments"
 echo "=========================================="
-echo "Organization ID: $ORG_ID"
+echo "Organization: $ORG_SLUG"
 echo "Excel File: $EXCEL_FILE"
 echo "Sheet: $SHEET_NAME"
 echo ""
@@ -41,8 +44,8 @@ echo "Running import command..."
 python manage.py import_instruments_excel \
     --file "$EXCEL_FILE" \
     --sheet "$SHEET_NAME" \
-    --org-id "$ORG_ID" \
-    --actor-id "$ACTOR_ID"
+    --org-slug "$ORG_SLUG" \
+    --actor-username "$ACTOR_USERNAME"
 
 echo ""
 echo "=========================================="

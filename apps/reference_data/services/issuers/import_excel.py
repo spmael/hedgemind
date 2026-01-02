@@ -14,6 +14,7 @@ from __future__ import annotations
 import pandas as pd
 
 from apps.reference_data.models import Issuer
+from apps.reference_data.models.issuers import IssuerGroup
 from libs.tenant_context import get_current_org_id
 
 
@@ -115,12 +116,52 @@ def import_issuers_from_file(
             if not short_name:
                 errors.append(f"Row {idx + 2}: short_name is required")
                 continue
+            # Validate country code: must be 2 characters
             if not country or len(country) != 2:
                 errors.append(f"Row {idx + 2}: country must be a 2-character code")
                 continue
             if not issuer_group:
                 errors.append(f"Row {idx + 2}: issuer_group is required")
                 continue
+
+            # Look up or create IssuerGroup by name or code
+            # Map common names to codes
+            name_to_code = {
+                "Bank": "BANK",
+                "Asset Manager": "AM",
+                "Sovereign": "SOV",
+                "Corporate": "CORP",
+                "Financial Institution": "FIN",
+                "Insurance": "INS",
+            }
+
+            # Try to find by name first
+            issuer_group_obj = IssuerGroup.objects.filter(name=issuer_group).first()
+
+            # If not found, try by code (from mapping or use name as code)
+            if not issuer_group_obj:
+                code = name_to_code.get(issuer_group, issuer_group.upper()[:10])
+                issuer_group_obj = IssuerGroup.objects.filter(code=code).first()
+
+            # If still not found, create new one with unique code
+            if not issuer_group_obj:
+                code = name_to_code.get(issuer_group, issuer_group.upper()[:10])
+                # Ensure code is unique by appending number if needed
+                base_code = code
+                counter = 1
+                while IssuerGroup.objects.filter(code=code).exists():
+                    code = f"{base_code}{counter}"[:10]  # Keep within 10 chars
+                    counter += 1
+                    if counter > 999:
+                        raise ValueError(
+                            f"Unable to generate unique code for issuer group: {issuer_group}"
+                        )
+
+                issuer_group_obj = IssuerGroup.objects.create(
+                    name=issuer_group,
+                    code=code,
+                    is_active=True,
+                )
 
             # Create or update issuer
             # Use unique_together constraint: (organization, name)
@@ -130,7 +171,7 @@ def import_issuers_from_file(
                 defaults={
                     "short_name": short_name,
                     "country": country,
-                    "issuer_group": issuer_group,
+                    "issuer_group": issuer_group_obj,
                     "is_active": True,
                 },
             )
@@ -149,4 +190,3 @@ def import_issuers_from_file(
         "errors": errors,
         "total_rows": len(df),
     }
-

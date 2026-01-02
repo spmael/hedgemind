@@ -11,7 +11,8 @@ import pandas as pd
 import pytest
 
 from apps.reference_data.models import Issuer
-from apps.reference_data.services.issuers.import_excel import import_issuers_from_file
+from apps.reference_data.services.issuers.import_excel import \
+    import_issuers_from_file
 from libs.tenant_context import organization_context
 from tests.factories import OrganizationFactory
 
@@ -82,7 +83,7 @@ class TestImportIssuersExcel:
             {
                 "name": ["Test Issuer"],
                 "short_name": ["TI"],
-                "country": ["INVALID"],  # Not 2 characters
+                "country": ["INVALID"],  # Not 2 characters (7 chars, too long)
                 "issuer_group": ["Bank"],
             }
         )
@@ -102,13 +103,18 @@ class TestImportIssuersExcel:
 
     def test_import_issuers_updates_existing(self, org_context_with_org):
         """Test import updates existing issuers."""
+        from apps.reference_data.models.issuers import IssuerGroup
+
+        # Create issuer group first
+        bank_group = IssuerGroup.objects.create(code="BANK", name="Bank")
+
         # Create existing issuer
         Issuer.objects.create(
             organization=org_context_with_org,
             name="Test Issuer",
             short_name="TI",
             country="GA",
-            issuer_group="Bank",
+            issuer_group=bank_group,
         )
 
         df = pd.DataFrame(
@@ -137,7 +143,7 @@ class TestImportIssuersExcel:
             issuer = Issuer.objects.get(name="Test Issuer")
             assert issuer.short_name == "TI_UPDATED"
             assert issuer.country == "CM"
-            assert issuer.issuer_group == "Asset Manager"
+            assert issuer.issuer_group.name == "Asset Manager"
 
         finally:
             Path(tmp_path).unlink(missing_ok=True)
@@ -266,4 +272,3 @@ class TestImportIssuersExcel:
         finally:
             Path(tmp_path).unlink(missing_ok=True)
             set_current_org_id(None)  # Clean up
-

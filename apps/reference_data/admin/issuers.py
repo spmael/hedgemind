@@ -10,7 +10,7 @@ import pandas as pd
 from django.contrib import admin, messages
 from django.http import HttpResponse
 
-from apps.reference_data.models.issuers import Issuer, IssuerRating
+from apps.reference_data.models.issuers import Issuer, IssuerGroup, IssuerRating
 
 
 class IssuerRatingInline(admin.TabularInline):
@@ -33,6 +33,7 @@ class IssuerAdmin(admin.ModelAdmin):
 
     list_display = [
         "name",
+        "issuer_code",
         "short_name",
         "country",
         "issuer_group",
@@ -40,7 +41,7 @@ class IssuerAdmin(admin.ModelAdmin):
         "created_at",
     ]
     list_filter = ["organization", "country", "issuer_group", "is_active", "created_at"]
-    search_fields = ["name", "short_name"]
+    search_fields = ["name", "short_name", "issuer_code"]
     readonly_fields = ["created_at", "updated_at"]
     raw_id_fields = ["organization"]
     inlines = [IssuerRatingInline]
@@ -102,3 +103,38 @@ class IssuerRatingAdmin(admin.ModelAdmin):
     readonly_fields = ["created_at"]
     raw_id_fields = ["issuer"]
     ordering = ["-date_assigned", "agency"]
+
+
+@admin.register(IssuerGroup)
+class IssuerGroupAdmin(admin.ModelAdmin):
+    """
+    Admin interface for IssuerGroup model.
+
+    Provides management interface for issuer groups with hierarchical display.
+    """
+
+    list_display = ["name", "code", "parent", "is_active", "sort_order", "created_at"]
+    list_filter = ["is_active", "parent", "created_at"]
+    search_fields = ["name", "code", "description"]
+    readonly_fields = ["created_at", "updated_at"]
+    ordering = ["sort_order", "name"]
+
+    fieldsets = (
+        (
+            None,
+            {
+                "fields": (
+                    "name",
+                    "code",
+                    "parent",
+                    "description",
+                    "is_active",
+                    "sort_order",
+                )
+            },
+        ),
+        (
+            "Metadata",
+            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
+        ),
+    )

@@ -19,9 +19,14 @@ from decimal import Decimal
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-from apps.reference_data.models import (FundCategory, Instrument,
-                                        InstrumentGroup, InstrumentType,
-                                        Issuer, ValuationMethod)
+from apps.reference_data.models import (
+    FundCategory,
+    Instrument,
+    InstrumentGroup,
+    InstrumentType,
+    Issuer,
+    ValuationMethod,
+)
 from libs.tenant_context import get_current_org_id
 
 
@@ -140,19 +145,25 @@ def import_instruments_from_file(
             f"Please create InstrumentType records first."
         )
 
-    # Resolve Issuers (by short_name first, then by name)
+    # Resolve Issuers (by issuer_code first, then short_name, then name)
     issuers_by_code = {}
-    # Try by short_name first
+    # Try by issuer_code first (new structured format)
+    for issuer in Issuer.objects.filter(
+        organization_id=org_id, issuer_code__in=unique_issuer_codes
+    ):
+        if issuer.issuer_code:
+            issuers_by_code[issuer.issuer_code.upper()] = issuer
+    # Then by short_name
     for issuer in Issuer.objects.filter(
         organization_id=org_id, short_name__in=unique_issuer_codes
     ):
-        if issuer.short_name:
+        if issuer.short_name and issuer.short_name.upper() not in issuers_by_code:
             issuers_by_code[issuer.short_name.upper()] = issuer
-    # Then by name
+    # Finally by name
     for issuer in Issuer.objects.filter(
         organization_id=org_id, name__in=unique_issuer_codes
     ):
-        if issuer.name.upper() not in issuers_by_code:
+        if issuer.name and issuer.name.upper() not in issuers_by_code:
             issuers_by_code[issuer.name.upper()] = issuer
 
     # Check for missing issuers
@@ -161,7 +172,7 @@ def import_instruments_from_file(
     ]
     if missing_issuers:
         raise ValueError(
-            f"Issuer codes not found (by short_name or name): {missing_issuers}. "
+            f"Issuer codes not found (by issuer_code, short_name, or name): {missing_issuers}. "
             f"Please create Issuer records first."
         )
 

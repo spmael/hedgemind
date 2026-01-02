@@ -26,6 +26,7 @@ When creating a new bug report, include:
 ## Current Bugs
 
 - **#001**: Database Permission Denied for Schema Public - ✅ RESOLVED
+- **#002**: Celery Multiprocessing Permission Error on Windows - ✅ RESOLVED
 
 ## Adding New Bugs
 

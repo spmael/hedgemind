@@ -19,9 +19,9 @@ from pathlib import Path
 from django.core.management.base import BaseCommand, CommandError
 
 from apps.audit.models import AuditEvent
-from apps.organizations.models import Organization
 from apps.reference_data.services.prices.canonicalize import canonicalize_prices
 from apps.reference_data.services.prices.import_excel import import_prices_from_file
+from libs.command_utils import resolve_organization, resolve_user
 from libs.tenant_context import organization_context
 
 
@@ -77,8 +77,17 @@ class Command(BaseCommand):
         parser.add_argument(
             "--org-id",
             type=int,
-            required=True,
-            help="Organization ID (required for organization-scoped instruments)",
+            help="Organization ID (numeric)",
+        )
+        parser.add_argument(
+            "--org-slug",
+            type=str,
+            help="Organization slug (e.g., 'cemac-bank')",
+        )
+        parser.add_argument(
+            "--org-code",
+            type=str,
+            help="Organization code_name (e.g., 'CEMACBANK')",
         )
         parser.add_argument(
             "--revision",
@@ -92,6 +101,11 @@ class Command(BaseCommand):
             help="User ID of the actor performing this action (for audit log)",
         )
         parser.add_argument(
+            "--actor-username",
+            type=str,
+            help="Username of the actor performing this action (for audit log)",
+        )
+        parser.add_argument(
             "--canonicalize",
             action="store_true",
             help="Run canonicalization after import",
@@ -100,7 +114,6 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         """Execute the command."""
         file_path = options.get("file")
-        org_id = options.get("org_id")
         source_code = options.get("source_code")
         revision = options.get("revision", 0)
 
@@ -108,30 +121,28 @@ class Command(BaseCommand):
         if not os.path.exists(file_path):
             raise CommandError(f"File not found: {file_path}")
 
-        # Validate organization exists
-        try:
-            organization = Organization.objects.get(id=org_id)
-        except Organization.DoesNotExist:
-            raise CommandError(f"Organization with id={org_id} not found")
+        # Resolve organization from various identifier types
+        organization = resolve_organization(
+            org_id=options.get("org_id"),
+            org_slug=options.get("org_slug"),
+            org_code=options.get("org_code"),
+        )
 
-        # Get actor if provided
-        actor = None
-        actor_id = options.get("actor_id")
-        if actor_id:
-            from django.contrib.auth import get_user_model
-
-            User = get_user_model()
-            try:
-                actor = User.objects.get(pk=actor_id)
-            except User.DoesNotExist:
+        # Resolve actor if provided
+        actor = resolve_user(
+            user_id=options.get("actor_id"),
+            username=options.get("actor_username"),
+        )
+        if options.get("actor_id") or options.get("actor_username"):
+            if actor is None:
                 self.stdout.write(
                     self.style.WARNING(
-                        f"User with ID {actor_id} does not exist, proceeding without actor"
+                        "Actor not found. Proceeding without actor for audit log."
                     )
                 )
 
         self.stdout.write(f"Importing price observations from file: {file_path}")
-        self.stdout.write(f"Organization: {organization.name} (ID: {org_id})")
+        self.stdout.write(f"Organization: {organization.name} (ID: {organization.id})")
         self.stdout.write(f"Source: {source_code}")
         self.stdout.write(f"Revision: {revision}")
         self.stdout.write(f"Sheet: {options.get('sheet', 'first sheet')}")
@@ -141,7 +152,7 @@ class Command(BaseCommand):
         file_hash = self._calculate_file_hash(file_path)
 
         # Import within organization context
-        with organization_context(org_id):
+        with organization_context(organization.id):
             try:
                 # Import
                 result = import_prices_from_file(

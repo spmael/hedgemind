@@ -9,7 +9,8 @@ This document describes the end-to-end data pipelines and workflows in Hedgemind
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │              System Initialization (One-Time)                │
-│  - Load global reference data (InstrumentGroup, Type)        │
+│  - Load global reference data                               │
+│    (InstrumentGroup, InstrumentType, IssuerGroup)           │
 │  - Sync market data sources (BVMAC, BEAC, etc.)             │
 └─────────────────────────────────────────────────────────────┘
                           │
@@ -60,7 +61,18 @@ This document describes the end-to-end data pipelines and workflows in Hedgemind
    - **Global data**: Same for all organizations
    - **Idempotent**: Safe to re-run
 
-2. **Sync Market Data Sources** (Deployment-Specific)
+2. **Load Issuer Groups** (Static)
+   ```bash
+   python manage.py load_issuer_groups
+   ```
+   - Creates `IssuerGroup` records with hierarchical structure
+   - Top-level: Sovereign, Supranational/Multilateral, GRE, Financial, Corporate
+   - Sub-groups: Bank, Insurance, Asset Manager, Microfinance, Other Financial (under Financial)
+   - Sub-groups: Industrial, Consumer, Energy, Utilities (under Corporate)
+   - **Global data**: Same for all organizations
+   - **Idempotent**: Safe to re-run
+
+3. **Sync Market Data Sources** (Deployment-Specific)
    ```bash
    python manage.py sync_market_data_sources
    ```
@@ -103,7 +115,7 @@ This document describes the end-to-end data pipelines and workflows in Hedgemind
    - Example: Org 1 prefers CUSTODIAN (priority 1) over BEAC (priority 2) for FX rates
 
 **Dependencies**:
-- ✅ Global reference data must be loaded (InstrumentGroup, InstrumentType)
+- ✅ Global reference data must be loaded (InstrumentGroup, InstrumentType, IssuerGroup)
 - ✅ Market data sources must exist (MarketDataSource records)
 
 **Output**: Organization ready for portfolio imports and analytics.
@@ -338,11 +350,12 @@ run_portfolio_daily_close_task.delay(org_id=1, as_of_iso_date="2025-01-15")
 System Initialization
   ├─→ InstrumentGroup (global)
   ├─→ InstrumentType (global)
+  ├─→ IssuerGroup (global)
   └─→ MarketDataSource (global)
 
 Organization Setup
-  ├─→ Depends on: InstrumentGroup, InstrumentType
-  ├─→ Creates: Issuer (org-scoped)
+  ├─→ Depends on: InstrumentGroup, InstrumentType, IssuerGroup
+  ├─→ Creates: Issuer (org-scoped, depends on IssuerGroup)
   ├─→ Creates: Instrument (org-scoped, depends on Issuer)
   └─→ Creates: MarketDataSourcePriority (org-scoped, optional, depends on MarketDataSource)
 
@@ -371,8 +384,8 @@ Analytics Pipeline
 ### Critical Dependencies
 
 **Before Portfolio Import**:
-- ✅ Global reference data loaded (InstrumentGroup, InstrumentType)
-- ✅ Organization has Issuers
+- ✅ Global reference data loaded (InstrumentGroup, InstrumentType, IssuerGroup)
+- ✅ Organization has Issuers (with IssuerGroup assigned)
 - ✅ Organization has Instruments (matching portfolio holdings)
 
 **Before Analytics/Valuation**:
@@ -443,6 +456,7 @@ with organization_context(org_id=1):
 1. **System Initialization** (one-time, admin):
    ```bash
    python manage.py load_reference_data
+   python manage.py load_issuer_groups
    python manage.py sync_market_data_sources
    ```
 

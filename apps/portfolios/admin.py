@@ -14,6 +14,7 @@ from apps.portfolios.models import (
     PortfolioGroup,
     PortfolioImport,
     PortfolioImportError,
+    PositionSnapshot,
 )
 
 
@@ -102,3 +103,76 @@ class PortfolioImportAdmin(admin.ModelAdmin):
     search_fields = ["portfolio__name"]
     readonly_fields = ["file", "inputs_hash", "created_at", "completed_at"]
     inlines = [PortfolioImportErrorInline]
+
+
+@admin.register(PositionSnapshot)
+class PositionSnapshotAdmin(admin.ModelAdmin):
+    """
+    Admin interface for PositionSnapshot model.
+
+    Provides read-only interface for viewing position snapshots with organization filtering.
+    Position snapshots are immutable and should not be edited through admin.
+    """
+
+    list_display = [
+        "portfolio",
+        "instrument",
+        "as_of_date",
+        "quantity",
+        "market_value",
+        "book_value",
+        "valuation_method",
+        "valuation_source",
+        "created_at",
+    ]
+    list_filter = [
+        "organization",
+        "portfolio",
+        "as_of_date",
+        "valuation_method",
+        "valuation_source",
+        "created_at",
+    ]
+    search_fields = [
+        "portfolio__name",
+        "instrument__name",
+        "instrument__isin",
+        "instrument__ticker",
+    ]
+    readonly_fields = [
+        "portfolio",
+        "portfolio_import",
+        "instrument",
+        "quantity",
+        "book_price",
+        "book_value",
+        "market_value",
+        "price",
+        "accrued_interest",
+        "valuation_method",
+        "valuation_source",
+        "as_of_date",
+        "last_valuation_date",
+        "stale_after_days",
+        "created_at",
+        "updated_at",
+    ]
+    fields = [
+        "portfolio",
+        "portfolio_import",
+        "instrument",
+        "as_of_date",
+        "quantity",
+        "book_price",
+        "book_value",
+        "market_value",
+        "price",
+        "accrued_interest",
+        "valuation_method",
+        "valuation_source",
+        "last_valuation_date",
+        "stale_after_days",
+        "created_at",
+        "updated_at",
+    ]
+    ordering = ["-as_of_date", "portfolio", "instrument"]

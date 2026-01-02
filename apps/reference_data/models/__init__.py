@@ -33,7 +33,7 @@ from apps.reference_data.models.instruments import (
     InstrumentGroup,
     InstrumentType,
 )
-from apps.reference_data.models.issuers import Issuer, IssuerRating
+from apps.reference_data.models.issuers import Issuer, IssuerGroup, IssuerRating
 from apps.reference_data.models.market_data import (
     MarketDataSource,
     MarketDataSourcePriority,
@@ -58,6 +58,7 @@ __all__ = [
     "YieldCurveType",
     # Issuers
     "Issuer",
+    "IssuerGroup",
     "IssuerRating",
     # Instruments
     "Instrument",

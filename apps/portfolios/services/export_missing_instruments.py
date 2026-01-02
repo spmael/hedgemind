@@ -11,6 +11,7 @@ import re
 from io import StringIO
 
 from apps.portfolios.models import PortfolioImport, PortfolioImportError
+from apps.portfolios.services.preflight import preflight_portfolio_import
 from libs.tenant_context import get_current_org_id
 
 
@@ -43,25 +44,38 @@ def export_missing_instruments_csv(portfolio_import_id: int) -> tuple[str, str]:
     except PortfolioImport.DoesNotExist:
         raise ValueError(f"PortfolioImport {portfolio_import_id} not found")
 
-    # Get missing instrument errors
+    # Get missing instrument identifiers from error records (created during import)
+    # or from preflight results (if import hasn't been attempted yet)
+    identifiers = set()
+
+    # First, try to get from PortfolioImportError records (from actual import attempts)
     errors = PortfolioImportError.objects.filter(
         portfolio_import=portfolio_import,
         error_type="reference_data",
         error_code="INSTRUMENT_NOT_FOUND",
     ).order_by("row_number")
 
-    if not errors.exists():
-        raise ValueError("No missing instrument errors found")
-
-    # Extract unique identifiers
-    identifiers = set()
-    for error in errors:
-        identifier = _extract_identifier_from_error(error)
-        if identifier:
-            identifiers.add(identifier)
+    if errors.exists():
+        # Extract identifiers from error records
+        for error in errors:
+            identifier = _extract_identifier_from_error(error)
+            if identifier:
+                identifiers.add(identifier)
+    else:
+        # No error records yet - try preflight to get missing instruments
+        try:
+            preflight_result = preflight_portfolio_import(portfolio_import.id)
+            if preflight_result and preflight_result.get("missing_instruments"):
+                identifiers.update(preflight_result["missing_instruments"])
+        except Exception:
+            # Preflight might fail (e.g., file not readable), ignore and continue
+            pass
 
     if not identifiers:
-        raise ValueError("No instrument identifiers could be extracted from error records")
+        raise ValueError(
+            "No missing instrument errors found. "
+            "Run preflight validation first or attempt an import to generate error records."
+        )
 
     # CSV columns matching instrument import template
     csv_columns = [
@@ -80,7 +94,6 @@ def export_missing_instruments_csv(portfolio_import_id: int) -> tuple[str, str]:
 
     # Write CSV to string
     output = StringIO()
-    # Use utf-8-sig (UTF-8 with BOM) for Excel compatibility
     writer = csv.DictWriter(output, fieldnames=csv_columns)
     writer.writeheader()
 
@@ -105,6 +118,10 @@ def export_missing_instruments_csv(portfolio_import_id: int) -> tuple[str, str]:
 
     csv_content = output.getvalue()
     output.close()
+
+    # Add UTF-8 BOM (Byte Order Mark) for Excel compatibility
+    # Excel needs the BOM to properly recognize UTF-8 encoding
+    csv_content = "\ufeff" + csv_content
 
     # Generate filename
     filename = f"missing_instruments_import_{portfolio_import_id}.csv"
@@ -137,4 +154,3 @@ def _extract_identifier_from_error(error: PortfolioImportError) -> str | None:
                 return str(raw_row_data[field]).strip().upper()
 
     return None
-

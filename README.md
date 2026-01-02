@@ -108,11 +108,18 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
     - `run_portfolio_daily_close()` - Full orchestration: valuation ↁEexposure ↁEreport
     - `run_daily_close()` - Market data ETL orchestration
     - Management command: `run_portfolio_daily_close` for triggering daily close
+      - Supports `--portfolio-id` or `--portfolio-name`
+      - Supports `--org-id` or `--org-code`
   - **Celery Tasks** (`apps/etl/tasks.py`):
     - `run_daily_close_task()` - Async task for daily close orchestration (requires org_id parameter)
     - `ping_etl()` - Health check task for ETL system
   - Market data FX daily pipeline (placeholder)
   - Prices daily pipeline (placeholder)
+- `apps/analytics` - Analytics engine ✁E
+  - **Celery Tasks** (`apps/analytics/tasks.py`):
+    - `run_portfolio_daily_close_task()` - Async task for portfolio daily close (valuation → exposure → report)
+      - Supports `portfolio_id` or `portfolio_name`
+      - Supports `org_id` or `org_code`
 
 - `apps/audit` - Audit logging ✁E
   - AuditEvent model implemented
@@ -176,7 +183,7 @@ All models have comprehensive Django admin interfaces configured:
 
 - `apps/organizations/admin.py` - Organization and OrganizationMember management
 - `apps/reference_data/admin.py` - Reference data models (instruments, issuers, market data)
-- `apps/portfolios/admin.py` - Portfolio, PortfolioImport, PortfolioImportError management
+- `apps/portfolios/admin.py` - Portfolio, PortfolioImport, PortfolioImportError, PositionSnapshot management
 - `apps/analytics/admin.py` - ValuationRun, ValuationPositionResult, ExposureResult management
 - `apps/reports/admin.py` - ReportTemplate and Report management
 - `apps/audit/admin.py` - AuditEvent viewing (read-only for immutability)
@@ -466,8 +473,14 @@ python manage.py runserver
 7. **Start Celery worker** (in a separate terminal)
 
 ```bash
+# On Windows, use --pool=solo to avoid multiprocessing issues
+celery -A config worker -l info --pool=solo
+
+# On Linux/Mac, you can use the default pool
 celery -A config worker -l info
 ```
+
+**Note:** On Windows, Celery's default multiprocessing pool may cause permission errors. Use `--pool=solo` to run in single-process mode. See `bugs/002-celery-multiprocessing-windows-permission-error.md` for details.
 
 ### Management Commands
 
@@ -494,8 +507,12 @@ python manage.py canonicalize_prices --as-of 2024-01-01
 # Import portfolio positions (requires PortfolioImport record to exist)
 python manage.py import_portfolio --portfolio-import-id 123 --org-id 1 --actor-id 5
 
-# Run portfolio daily close (valuation ↁEexposure ↁEreport)
+# Run portfolio daily close (valuation → exposure → report)
+# Using portfolio ID and organization ID:
 python manage.py run_portfolio_daily_close --portfolio-id 1 --as-of 2025-01-15 --org-id 1
+
+# Using portfolio name and organization code:
+python manage.py run_portfolio_daily_close --portfolio-name="MD0001" --as-of 2025-01-15 --org-code=M001
 ```
 
 ### Reference Data Management
@@ -882,6 +899,13 @@ def process_portfolio(self, org_id: int):
     with organization_context(org_id):
         portfolio = Portfolio.objects.create(name="My Portfolio")
 ```
+
+**Organization and Portfolio Identification:**
+- Organizations can be identified by `id` (integer) or `code_name` (string, e.g., "M001")
+- Portfolios can be identified by `id` (integer) or `name` (string)
+- Management commands and Celery tasks support both:
+  - `--org-id`/`org_id` and `--org-code`/`org_code` for organizations
+  - `--portfolio-id`/`portfolio_id` and `--portfolio-name`/`portfolio_name` for portfolios
 
 ### Organization-Owned Models
 

@@ -164,14 +164,11 @@ def import_status(request, import_id: int):
                 "warnings": [f"Preflight validation error: {str(e)}"],
             }
 
-    # Determine if should auto-refresh (if status is pending or processing)
-    auto_refresh = portfolio_import.status in [
-        "pending",
-        "parsing",
-        "validating",
-        "processing",
-        "importing",
-    ]
+    # Determine if should auto-refresh
+    # Refresh while processing or waiting for async task to complete
+    # Stop refreshing only when status is "success" or "failed" (final states)
+    # Keep refreshing for any non-final state to catch async task status changes
+    auto_refresh = portfolio_import.status not in ["success", "failed"]
 
     return render(
         request,
@@ -239,9 +236,46 @@ def start_import(request, import_id: int):
             reverse("portfolios:import_status", args=[portfolio_import.id])
         )
 
-    # Trigger async import task
-    import_portfolio_task.delay(portfolio_import.id, request.org_id)
-    messages.success(request, "Import started. Processing in background...")
+    # Try to trigger async import task
+    import logging
+
+    logger = logging.getLogger(__name__)
+    try:
+        import_portfolio_task.delay(portfolio_import.id, request.org_id)
+        messages.success(request, "Import started. Processing in background...")
+        logger.info(
+            f"Queued import task for PortfolioImport {portfolio_import.id} (org {request.org_id})"
+        )
+    except Exception as e:
+        # If Celery is not available, fall back to synchronous import
+        logger.warning(
+            f"Failed to queue async task for PortfolioImport {portfolio_import.id}: {e}. "
+            "Falling back to synchronous import."
+        )
+        try:
+            # Run import synchronously as fallback
+            from apps.portfolios.ingestion.import_excel import (
+                import_portfolio_from_file,
+            )
+
+            with organization_context(request.org_id):
+                result = import_portfolio_from_file(portfolio_import.id)
+            messages.success(
+                request,
+                f"Import completed. Created {result.get('created', 0)} positions.",
+            )
+            logger.info(
+                f"Completed synchronous import for PortfolioImport {portfolio_import.id}"
+            )
+        except Exception as sync_error:
+            logger.error(
+                f"Synchronous import failed for PortfolioImport {portfolio_import.id}: {sync_error}",
+                exc_info=True,
+            )
+            messages.error(
+                request,
+                f"Import failed: {str(sync_error)}. Please check logs for details.",
+            )
 
     return HttpResponseRedirect(
         reverse("portfolios:import_status", args=[portfolio_import.id])
@@ -249,12 +283,12 @@ def start_import(request, import_id: int):
 
 
 @login_required
-@require_http_methods(["GET"])
+@require_http_methods(["GET", "POST"])
 def export_missing_instruments(request, import_id: int):
     """
     Export missing instruments as CSV for instrument import template.
 
-    GET: Download CSV file with missing instruments formatted for import.
+    GET/POST: Download CSV file with missing instruments formatted for import.
     """
     portfolio_import = get_object_or_404(
         PortfolioImport.objects.filter(organization_id=request.org_id), id=import_id
@@ -264,15 +298,28 @@ def export_missing_instruments(request, import_id: int):
         with organization_context(request.org_id):
             csv_content, filename = export_missing_instruments_csv(portfolio_import.id)
 
-        response = HttpResponse(csv_content, content_type="text/csv; charset=utf-8-sig")
+        # Encode content to bytes for proper file download
+        csv_bytes = csv_content.encode("utf-8-sig")
+        response = HttpResponse(csv_bytes, content_type="text/csv; charset=utf-8-sig")
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = len(csv_bytes)
         return response
     except ValueError as e:
+        # Log error for debugging
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Export missing instruments ValueError: {e}")
         messages.error(request, str(e))
         return HttpResponseRedirect(
             reverse("portfolios:import_status", args=[portfolio_import.id])
         )
     except Exception as e:
+        # Log error for debugging
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.error(f"Export missing instruments exception: {e}", exc_info=True)
         messages.error(request, f"Failed to export missing instruments: {str(e)}")
         return HttpResponseRedirect(
             reverse("portfolios:import_status", args=[portfolio_import.id])
