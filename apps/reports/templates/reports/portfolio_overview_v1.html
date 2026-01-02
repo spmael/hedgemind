@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Report - {{ portfolio.name }}</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 20px;
+            color: #000;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #000;
+            border-bottom: 2px solid #000;
+            padding-bottom: 10px;
+            margin-bottom: 30px;
+        }
+        h2 {
+            color: #000;
+            border-bottom: 1px solid #666;
+            padding-bottom: 5px;
+            margin-top: 30px;
+            margin-bottom: 15px;
+        }
+        h3 {
+            color: #000;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            font-size: 12px;
+        }
+        th, td {
+            border: 1px solid #000;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f0f0f0;
+            font-weight: bold;
+        }
+        .summary-box {
+            border: 1px solid #000;
+            padding: 15px;
+            margin-bottom: 20px;
+            background-color: #f9f9f9;
+        }
+        .summary-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        .summary-label {
+            font-weight: bold;
+        }
+        .text-right {
+            text-align: right;
+        }
+        .page-break {
+            page-break-before: always;
+        }
+        @media print {
+            body {
+                margin: 0;
+            }
+            .page-break {
+                page-break-before: always;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>Portfolio Report: {{ portfolio.name }}</h1>
+
+    <!-- Portfolio Overview -->
+    <div class="summary-box">
+        <h2>Portfolio Overview</h2>
+        <div class="summary-row">
+            <span class="summary-label">Portfolio Name:</span>
+            <span>{{ portfolio.name }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">As-of Date:</span>
+            <span>{{ as_of_date }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Total Market Value:</span>
+            <span>{{ valuation_run.get_total_market_value }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Position Count:</span>
+            <span>{{ valuation_run.position_count }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Base Currency:</span>
+            <span>{{ portfolio.base_currency }}</span>
+        </div>
+    </div>
+
+    <!-- Exposures Summary -->
+    <h2>Exposures Summary</h2>
+
+    <h3>Currency Exposures</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Currency</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in exposures.currency %}
+            <tr>
+                <td>{{ exp.dimension_label }}</td>
+                <td class="text-right">{{ exp.value_base }}</td>
+                <td class="text-right">{{ exp.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No currency exposures available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Country Exposures</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Country</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in exposures.country %}
+            <tr>
+                <td>{{ exp.dimension_label }}</td>
+                <td class="text-right">{{ exp.value_base }}</td>
+                <td class="text-right">{{ exp.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No country exposures available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Instrument Group Exposures</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Instrument Group</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in exposures.instrument_group %}
+            <tr>
+                <td>{{ exp.dimension_label }}</td>
+                <td class="text-right">{{ exp.value_base }}</td>
+                <td class="text-right">{{ exp.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No instrument group exposures available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Instrument Type Exposures</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Instrument Type</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exp in exposures.instrument_type %}
+            <tr>
+                <td>{{ exp.dimension_label }}</td>
+                <td class="text-right">{{ exp.value_base }}</td>
+                <td class="text-right">{{ exp.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No instrument type exposures available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Concentration Analysis -->
+    <h2>Concentration Analysis</h2>
+
+    <h3>Top 5 Issuers</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Issuer</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for conc in concentrations.issuers %}
+            <tr>
+                <td>{{ conc.label }}</td>
+                <td class="text-right">{{ conc.value_base }}</td>
+                <td class="text-right">{{ conc.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No issuer concentration data available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h3>Top 5 Instruments</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>Instrument</th>
+                <th class="text-right">Value (Base Currency)</th>
+                <th class="text-right">Percentage</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for conc in concentrations.instruments %}
+            <tr>
+                <td>{{ conc.label }}</td>
+                <td class="text-right">{{ conc.value_base }}</td>
+                <td class="text-right">{{ conc.pct_total|floatformat:2 }}%</td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="3">No instrument concentration data available</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <!-- Data Quality Summary -->
+    <h2>Data Quality Summary</h2>
+    <div class="summary-box">
+        <div class="summary-row">
+            <span class="summary-label">Total Positions:</span>
+            <span>{{ data_quality.total_positions }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Positions with Issues:</span>
+            <span>{{ data_quality.positions_with_issues }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Missing FX Rates:</span>
+            <span>{{ data_quality.missing_fx_rates }}</span>
+        </div>
+        <div class="summary-row">
+            <span class="summary-label">Invalid FX Rates:</span>
+            <span>{{ data_quality.invalid_fx_rates }}</span>
+        </div>
+    </div>
+
+    <div style="margin-top: 40px; font-size: 10px; color: #666; text-align: center;">
+        <p>Generated on {{ valuation_run.created_at|date:"Y-m-d H:i:s" }}</p>
+        <p>Valuation Run ID: {{ valuation_run.id }}</p>
+    </div>
+</body>
+</html>
+

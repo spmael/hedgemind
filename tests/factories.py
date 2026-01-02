@@ -13,6 +13,14 @@ from django.utils import timezone
 from django.utils.text import slugify
 from djmoney.money import Money
 
+from apps.analytics.models import (
+    ExposureDimensionType,
+    ExposureResult,
+    RunStatus,
+    ValuationPolicy,
+    ValuationPositionResult,
+    ValuationRun,
+)
 from apps.organizations.models import Organization, OrganizationMember, OrganizationRole
 from apps.portfolios.models import (
     ImportSourceType,
@@ -48,6 +56,7 @@ from apps.reference_data.models import (
     YieldCurvePointObservation,
     YieldCurveType,
 )
+from apps.reports.models import Report, ReportStatus, ReportTemplate
 from libs.choices import ImportStatus
 
 User = get_user_model()
@@ -745,3 +754,141 @@ class MarketIndexImportFactory(factory.django.DjangoModelFactory):
     canonical_values_created = 0
     completed_at = None
     created_by = None
+
+
+# Analytics Factories
+
+
+class ValuationRunFactory(factory.django.DjangoModelFactory):
+    """Factory for creating ValuationRun test instances."""
+
+    class Meta:
+        model = ValuationRun
+
+    portfolio = factory.SubFactory(PortfolioFactory)
+    as_of_date = factory.LazyFunction(date.today)
+    valuation_policy = ValuationPolicy.USE_SNAPSHOT_MV
+    status = RunStatus.PENDING
+    is_official = False
+
+    # Optional fields
+    inputs_hash = None
+    run_context_id = None
+    total_market_value = None
+    position_count = 0
+    positions_with_issues = 0
+    missing_fx_count = 0
+    log = None
+    created_by = None
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+class ValuationPositionResultFactory(factory.django.DjangoModelFactory):
+    """Factory for creating ValuationPositionResult test instances."""
+
+    class Meta:
+        model = ValuationPositionResult
+
+    valuation_run = factory.SubFactory(ValuationRunFactory)
+    position_snapshot = factory.SubFactory(PositionSnapshotFactory)
+    market_value_original_currency = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(1000, 10000000),
+            currency=(
+                obj.position_snapshot.instrument.currency
+                if obj.position_snapshot
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+    market_value_base_currency = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(1000, 10000000),
+            currency=(
+                obj.valuation_run.portfolio.base_currency
+                if obj.valuation_run
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+
+    # Optional fields
+    fx_rate_used = None
+    fx_rate_source = None
+    data_quality_flags = factory.LazyFunction(lambda: {})
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+class ExposureResultFactory(factory.django.DjangoModelFactory):
+    """Factory for creating ExposureResult test instances."""
+
+    class Meta:
+        model = ExposureResult
+
+    valuation_run = factory.SubFactory(ValuationRunFactory)
+    dimension_type = ExposureDimensionType.CURRENCY
+    dimension_key = factory.Iterator(["USD", "EUR", "XAF"])
+    dimension_label = factory.LazyAttribute(lambda obj: obj.dimension_key)
+    value_base = factory.LazyAttribute(
+        lambda obj: _make_money(
+            amount_range=(1000, 10000000),
+            currency=(
+                obj.valuation_run.portfolio.base_currency
+                if obj.valuation_run
+                else settings.DEFAULT_CURRENCY
+            ),
+        )
+    )
+    pct_total = factory.Faker(
+        "pydecimal", left_digits=3, right_digits=2, positive=True, max_value=100
+    )
+    as_of_date = factory.LazyAttribute(lambda obj: obj.valuation_run.as_of_date)
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+# Reports Factories
+
+
+class ReportTemplateFactory(factory.django.DjangoModelFactory):
+    """Factory for creating ReportTemplate test instances."""
+
+    class Meta:
+        model = ReportTemplate
+
+    name = factory.Sequence(lambda n: f"Report Template {n}")
+    version = "1.0"
+    template_type = "portfolio_overview"
+    config_json = factory.LazyFunction(
+        lambda: {"sections": ["overview", "exposures", "concentration", "data_quality"]}
+    )
+    is_active = True
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context
+
+
+class ReportFactory(factory.django.DjangoModelFactory):
+    """Factory for creating Report test instances."""
+
+    class Meta:
+        model = Report
+
+    valuation_run = factory.SubFactory(ValuationRunFactory)
+    template = factory.SubFactory(ReportTemplateFactory)
+    status = ReportStatus.PENDING
+
+    # Optional fields
+    pdf_file = None
+    csv_file = None
+    excel_file = None
+    generated_at = None
+    error_message = None
+
+    # Note: organization is set automatically via OrganizationOwnedModel
+    # when created within organization_context

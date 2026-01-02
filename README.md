@@ -17,9 +17,9 @@ Hedgemind is a **decision intelligence platform** for institutional users—asse
 
 ## Project Status
 
-**Current Phase**: Analytics Engine & Valuation (Active Development)
+**Current Phase**: Exposure Engine & Report Generation (Active Development)
 
-The project has a solid foundation with multi-tenant architecture, comprehensive reference data models, portfolio management infrastructure, and a working valuation engine. The platform now supports portfolio valuation runs with policy-based computation, execution context tracking, and audit trails.
+The project has a solid foundation with multi-tenant architecture, comprehensive reference data models, portfolio management infrastructure, valuation engine, exposure computation, and report generation. The platform now supports end-to-end portfolio analytics: valuation → exposure computation → report generation with PDF, CSV, and Excel outputs.
 
 ### ✅ Implemented
 
@@ -74,8 +74,11 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - All models are organization-scoped using `OrganizationOwnedModel`
   - **Testing**: Model tests implemented
 
-- `apps/etl` - ETL pipelines and orchestration 🚧
-  - Daily close orchestration framework
+- `apps/etl` - ETL pipelines and orchestration ✅
+  - **Daily Close Orchestration**:
+    - `run_portfolio_daily_close()` - Full orchestration: valuation → exposure → report
+    - `run_daily_close()` - Market data ETL orchestration
+    - Management command: `run_portfolio_daily_close` for triggering daily close
   - Market data FX daily pipeline (placeholder)
   - Prices daily pipeline (placeholder)
   - Celery tasks for async processing
@@ -89,12 +92,14 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - **Models**:
     - `ValuationRun` - Portfolio valuation runs with policy support
     - `ValuationPositionResult` - Computed valuation results per position
+    - `ExposureResult` - Stored exposure computation results (currency, issuer, country, instrument_group, instrument_type)
   - **Key Features**:
     - Valuation policy system (USE_SNAPSHOT_MV, REVALUE_FROM_MARKETDATA)
     - Official run designation with automatic unmarking
     - `inputs_hash` for data fingerprinting and idempotency
     - `run_context_id` for execution context tracking (batch operations, audit trail)
     - Stored aggregates (industry standard): total_market_value, position_count, data quality counts
+    - Exposure computation and storage (stored aggregates pattern for fast queries)
     - Status tracking (PENDING → RUNNING → SUCCESS/FAILED)
     - Execution logging
   - **Engine** (`apps/analytics/engine/`):
@@ -104,12 +109,35 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
       - `recalculate_total_market_value()` - Recalculate total from results
       - `compute_data_quality_summary()` - Aggregate data quality metrics
       - `compute_aggregates_from_results()` - Compute aggregates during execution
+    - `exposures.py` - Pure Python exposure computation functions
+      - `compute_exposures()` - Main entry point for all exposure types
+      - `compute_currency_exposures()` - Currency exposure breakdown
+      - `compute_issuer_exposures()` - Issuer concentration analysis
+      - `compute_country_exposures()` - Country exposure breakdown
+      - `compute_instrument_group_exposures()` - Instrument group exposure
+      - `compute_instrument_type_exposures()` - Instrument type exposure
+      - `compute_top_concentrations()` - Top N concentration analysis
     - **Architecture**: Separation of concerns - computation logic separate from data models
       - Models store data and provide simple getters
       - Engine functions perform all computation (pure functions, testable without Django)
       - Follows data engineering best practices (industry standard)
   - **Testing**: Comprehensive test coverage (800+ lines)
-- `apps/reports` - Report generation 🚧 (scaffolded, templates directory exists)
+- `apps/reports` - Report generation ✅
+  - **Models**:
+    - `ReportTemplate` - Report template definitions (portfolio overview v1)
+    - `Report` - Generated report instances with PDF, CSV, Excel outputs
+  - **Renderers** (`apps/reports/renderers/`):
+    - `portfolio_report.py` - Report generation functions
+      - `generate_portfolio_report()` - Main entry point for report generation
+      - `render_pdf_report()` - PDF generation using WeasyPrint
+      - `render_csv_report()` - CSV export with exposure tables
+      - `render_excel_report()` - Excel export with multiple sheets
+  - **Templates** (`apps/reports/templates/`):
+    - `portfolio_overview_v1.html` - HTML template for PDF reports
+  - **Features**:
+    - Multi-format output (PDF, CSV, Excel)
+    - Portfolio overview with exposures, concentration, data quality
+    - Board-ready PDF reports
 
 #### Libraries (`libs/`)
 - `libs/models.py` - `OrganizationOwnedModel` mixin for automatic organization scoping
@@ -132,13 +160,12 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 
 ### 🚧 In Progress / Planned
 
-- **Analytics Engine**: Exposure calculation, risk analytics (concentration, FX, duration)
 - **Stress Scenarios**: Deterministic stress scenario engine
-- **Portfolio Ingestion**: CSV/Excel upload and parsing services
-- **PDF Report Generation**: Report templates and renderers
+- **Portfolio Ingestion**: CSV/Excel upload and parsing services (models exist, ingestion logic to be implemented)
 - **Admin Interfaces**: Django admin configuration for all models
 - **Reference Data UI**: Web interfaces for managing reference data
-- **ETL Pipeline Implementation**: Complete market data daily pipelines
+- **ETL Pipeline Implementation**: Complete market data daily pipelines (FX, prices)
+- **Duration/Rate Sensitivity**: Fixed income analytics (duration, DV01)
 
 ## Architecture
 
@@ -168,6 +195,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 │  - Pure-Python functions/classes                        │
 │  - Valuation computation (valuation.py)                │
 │  - Aggregation functions (aggregation.py)               │
+│  - Exposure computation (exposures.py)                  │
 │  - Normalized holdings + market data → exposures        │
 │  - Produces report schema (JSON)                        │
 │  - Separation of concerns: computation separate from    │
@@ -207,12 +235,14 @@ See `libs/README_ORGANIZATION_OWNED_MODEL.md` for detailed usage guide.
 2. **Canonicalize**: Run canonicalization to create canonical price/rate/curve records
 3. **Storage**: Data stored in PostgreSQL with organization scoping where applicable
 
-**Portfolio & Analytics Flow** (Planned):
-1. **Upload**: User uploads CSV/XLSX → stored in object storage → `PortfolioImport` record created
-2. **Parse & Normalize** (async): Job validates → maps columns → creates `PositionSnapshot` records
-3. **Analytics Run** (async): Load market data → compute exposures → persist `AnalyticsRun` results
-4. **Report** (async): Render PDF from JSON results → persist `Report` record
-5. **UI**: User views portfolio → downloads PDF
+**Portfolio & Analytics Flow** (Implemented):
+1. **Upload**: User uploads CSV/XLSX → stored in object storage → `PortfolioImport` record created (models exist, ingestion logic to be completed)
+2. **Parse & Normalize** (async): Job validates → maps columns → creates `PositionSnapshot` records (to be implemented)
+3. **Analytics Run** (implemented): 
+   - Create `ValuationRun` → execute valuation → compute and store exposures
+   - `run_portfolio_daily_close()` orchestrates: valuation → exposure → report
+4. **Report** (implemented): Render PDF/CSV/Excel from computed results → persist `Report` record
+5. **UI**: User views portfolio → downloads PDF/CSV/Excel (backend ready, UI to be implemented)
 
 ## Getting Started
 
@@ -322,6 +352,9 @@ python manage.py load_reference_data  # Loads all initial reference data
 
 # Canonicalize price observations
 python manage.py canonicalize_prices --as-of 2024-01-01
+
+# Run portfolio daily close (valuation → exposure → report)
+python manage.py run_portfolio_daily_close --portfolio-id 1 --as-of 2025-01-15 --org-id 1
 ```
 
 ### Running Tests
@@ -346,10 +379,14 @@ hedgemind/
 │   ├── analytics/          # Analytics and metrics ✅
 │   │   ├── engine/         # Analytics engine (pure Python)
 │   │   │   ├── valuation.py    # Valuation computation
-│   │   │   └── aggregation.py # Aggregation functions
+│   │   │   ├── aggregation.py # Aggregation functions
+│   │   │   └── exposures.py    # Exposure computation
 │   ├── audit/              # Audit logging ✅
-│   ├── etl/                # ETL pipelines and orchestration 🚧
+│   ├── etl/                # ETL pipelines and orchestration ✅
 │   │   ├── orchestration/  # Daily close orchestration
+│   │   │   └── daily_close.py  # Portfolio daily close orchestration
+│   │   ├── management/     # Management commands
+│   │   │   └── commands/   # ETL management commands
 │   │   └── pipelines/      # Individual ETL pipelines
 │   ├── organizations/      # Multi-tenant organization management ✅
 │   ├── portfolios/         # Portfolio management ✅
@@ -360,9 +397,11 @@ hedgemind/
 │   │   │   └── commands/   # Excel import commands
 │   │   ├── providers/      # Market data providers
 │   │   └── services/       # Reference data services (import, canonicalize)
-│   └── reports/            # Report generation (scaffolded)
-│       ├── renderers/      # PDF renderers
-│       └── templates/      # Report templates
+│   └── reports/            # Report generation ✅
+│       ├── renderers/      # Report renderers (PDF, CSV, Excel)
+│       │   └── portfolio_report.py  # Portfolio report generation
+│       └── templates/      # Report templates (HTML)
+│           └── reports/    # Report template files
 ├── config/                 # Django project configuration
 │   ├── settings/           # Environment-specific settings
 │   │   ├── base.py         # Base settings
@@ -399,6 +438,7 @@ The analytics engine follows **data engineering best practices** by separating c
 - **Engine** (`apps/analytics/engine/`): Pure Python functions for all computation
   - `valuation.py`: Valuation computation logic
   - `aggregation.py`: Aggregation and summary functions
+  - `exposures.py`: Exposure computation logic (currency, issuer, country, instrument_group, instrument_type, concentration)
 
 **Benefits**:
 - **Testability**: Engine functions are pure and testable without Django dependencies
@@ -422,8 +462,9 @@ recalculated = recalculate_total_market_value(run)  # Recomputes from results
 - `position_count`: Number of positions (stored aggregate)
 - `positions_with_issues`: Data quality issue count (stored aggregate)
 - `missing_fx_count`: Missing FX rate count (stored aggregate)
+- `ExposureResult`: Stored exposure breakdowns (currency, issuer, country, instrument_group, instrument_type) with values and percentages
 
-These aggregates are computed during `execute()` and stored for fast queries, following the same pattern used by institutional platforms.
+These aggregates are computed during `execute()` and stored for fast queries, following the same pattern used by institutional platforms. Exposure results are persisted as `ExposureResult` records, enabling fast report generation and historical exposure analysis.
 
 ### Critical Fields for Pitch Book & Understanding
 

@@ -12,6 +12,7 @@ from libs.tenant_context import set_current_org_id  # noqa: E402
 from tests.factories import (  # noqa: E402
     BondInstrumentFactory,
     EquityInstrumentFactory,
+    ExposureResultFactory,
     FXRateFactory,
     FXRateImportFactory,
     FXRateObservationFactory,
@@ -39,7 +40,11 @@ from tests.factories import (  # noqa: E402
     PortfolioImportFactory,
     PositionSnapshotFactory,
     PrivateAssetInstrumentFactory,
+    ReportFactory,
+    ReportTemplateFactory,
     UserFactory,
+    ValuationPositionResultFactory,
+    ValuationRunFactory,
     YieldCurveFactory,
     YieldCurveImportFactory,
     YieldCurvePointFactory,
@@ -346,3 +351,41 @@ def market_index_constituent(market_index, instrument):
 def market_index_import(market_index, market_data_source):
     """Fixture to create a MarketIndexImport instance."""
     return MarketIndexImportFactory(index=market_index, source=market_data_source)
+
+
+# Analytics Fixtures
+
+
+@pytest.fixture
+def valuation_run(org_context_with_org, portfolio):
+    """Fixture to create a ValuationRun instance."""
+    return ValuationRunFactory(portfolio=portfolio)
+
+
+@pytest.fixture
+def valuation_position_result(org_context_with_org, valuation_run, position_snapshot):
+    """Fixture to create a ValuationPositionResult instance."""
+    return ValuationPositionResultFactory(
+        valuation_run=valuation_run, position_snapshot=position_snapshot
+    )
+
+
+@pytest.fixture
+def exposure_result(org_context_with_org, valuation_run):
+    """Fixture to create an ExposureResult instance."""
+    return ExposureResultFactory(valuation_run=valuation_run)
+
+
+# Reports Fixtures
+
+
+@pytest.fixture
+def report_template(org_context_with_org):
+    """Fixture to create a ReportTemplate instance."""
+    return ReportTemplateFactory()
+
+
+@pytest.fixture
+def report(org_context_with_org, valuation_run, report_template):
+    """Fixture to create a Report instance."""
+    return ReportFactory(valuation_run=valuation_run, template=report_template)

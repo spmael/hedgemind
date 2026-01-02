@@ -20,7 +20,9 @@ dependencies = [
     "django-money (>=3.5.4,<4.0.0)",
     "django-countries (>=8.2.0,<9.0.0)",
     "pillow (>=12.0.0,<13.0.0)",
-    "pandas (>=2.3.3,<3.0.0)"
+    "pandas (>=2.3.3,<3.0.0)",
+    "openpyxl (>=3.1.5,<4.0.0)",
+    "weasyprint (>=67.0,<68.0)"
 ]
 
 

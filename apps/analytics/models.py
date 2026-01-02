@@ -9,6 +9,8 @@ Key components:
 - ValuationPolicy: Policy choices for valuation methods
 - RunStatus: Status choices for valuation runs
 - ValuationRun: Main model representing a valuation run decision
+- ValuationPositionResult: Position-level valuation results
+- ExposureResult: Exposure computation results (currency, issuer, country, etc.)
 """
 
 from __future__ import annotations
@@ -673,6 +675,132 @@ class ValuationRun(OrganizationOwnedModel):
 
         return compute_data_quality_summary(self)
 
+    def get_exposures(self, dimension_type: str | None = None):
+        """
+        Get QuerySet of ExposureResult for this run.
+
+        Args:
+            dimension_type: Optional filter by dimension type (e.g., 'currency', 'issuer').
+
+        Returns:
+            QuerySet of ExposureResult objects.
+
+        Example:
+            >>> run = ValuationRun.objects.get(id=1)
+            >>> all_exposures = run.get_exposures()
+            >>> currency_exposures = run.get_exposures('currency')
+            >>> for exposure in currency_exposures:
+            ...     print(f"{exposure.dimension_label}: {exposure.value_base}")
+        """
+        exposures = ExposureResult.objects.filter(valuation_run=self)
+        if dimension_type:
+            exposures = exposures.filter(dimension_type=dimension_type)
+        return exposures
+
+    def compute_and_store_exposures(self) -> None:
+        """
+        Compute exposures and store as ExposureResult records.
+
+        Computes exposures using the exposure engine and stores them as ExposureResult
+        records. This method should be called after ValuationRun.execute() completes
+        successfully. Existing exposure results for this run are deleted before
+        creating new ones.
+
+        Raises:
+            ValueError: If run is not in SUCCESS status.
+
+        Example:
+            >>> run = ValuationRun.objects.get(id=1)
+            >>> run.execute()  # Must be SUCCESS
+            >>> run.compute_and_store_exposures()
+        """
+        from apps.analytics.engine.exposures import compute_exposures
+
+        # Validate that run is successful
+        if self.status != RunStatus.SUCCESS:
+            raise ValueError(
+                f"Cannot compute exposures when run status is {self.get_status_display()}. "
+                "Run must be in SUCCESS status."
+            )
+
+        # Compute exposures
+        exposure_data = compute_exposures(self)
+
+        # Delete existing exposure results for this run
+        with transaction.atomic():
+            ExposureResult.objects.filter(valuation_run=self).delete()
+
+            # Store currency exposures
+            for exp in exposure_data["currency"]:
+                ExposureResult.objects.create(
+                    valuation_run=self,
+                    dimension_type=ExposureDimensionType.CURRENCY,
+                    dimension_key=exp["currency"],
+                    dimension_label=exp["currency"],
+                    value_base=exp["value_base"],
+                    pct_total=exp["pct_total"],
+                    as_of_date=self.as_of_date,
+                    organization=self.organization,
+                )
+
+            # Store issuer exposures
+            for exp in exposure_data["issuer"]:
+                dimension_key = (
+                    str(exp["issuer_id"]) if exp["issuer_id"] is not None else "NULL"
+                )
+                ExposureResult.objects.create(
+                    valuation_run=self,
+                    dimension_type=ExposureDimensionType.ISSUER,
+                    dimension_key=dimension_key,
+                    dimension_label=exp["issuer_name"],
+                    value_base=exp["value_base"],
+                    pct_total=exp["pct_total"],
+                    as_of_date=self.as_of_date,
+                    organization=self.organization,
+                )
+
+            # Store country exposures
+            for exp in exposure_data["country"]:
+                dimension_key = (
+                    str(exp["country"]) if exp["country"] is not None else "NULL"
+                )
+                ExposureResult.objects.create(
+                    valuation_run=self,
+                    dimension_type=ExposureDimensionType.COUNTRY,
+                    dimension_key=dimension_key,
+                    dimension_label=exp["country_name"],
+                    value_base=exp["value_base"],
+                    pct_total=exp["pct_total"],
+                    as_of_date=self.as_of_date,
+                    organization=self.organization,
+                )
+
+            # Store instrument group exposures
+            for exp in exposure_data["instrument_group"]:
+                ExposureResult.objects.create(
+                    valuation_run=self,
+                    dimension_type=ExposureDimensionType.INSTRUMENT_GROUP,
+                    dimension_key=str(exp["instrument_group_id"]),
+                    dimension_label=exp["instrument_group_name"],
+                    value_base=exp["value_base"],
+                    pct_total=exp["pct_total"],
+                    as_of_date=self.as_of_date,
+                    organization=self.organization,
+                )
+
+            # Store instrument type exposures
+            for exp in exposure_data["instrument_type"]:
+                ExposureResult.objects.create(
+                    valuation_run=self,
+                    dimension_type=ExposureDimensionType.INSTRUMENT_TYPE,
+                    dimension_key=str(exp["instrument_type_id"]),
+                    dimension_label=exp["instrument_type_name"],
+                    value_base=exp["value_base"],
+                    pct_total=exp["pct_total"],
+                    as_of_date=self.as_of_date,
+                    organization=self.organization,
+                )
+
     def __str__(self) -> str:
         """String representation of the valuation run."""
         policy_display = self.get_valuation_policy_display()
@@ -805,3 +933,126 @@ class ValuationPositionResult(OrganizationOwnedModel):
             issues.append("Invalid FX rate")
 
         return "; ".join(issues) if issues else ""
+
+
+class ExposureDimensionType(models.TextChoices):
+    """
+    Exposure dimension type choices for exposure results.
+
+    Defines the type of dimension used for exposure aggregation:
+    - CURRENCY: Currency exposure
+    - ISSUER: Issuer concentration
+    - COUNTRY: Country exposure
+    - INSTRUMENT_GROUP: Instrument group exposure
+    - INSTRUMENT_TYPE: Instrument type exposure
+    """
+
+    CURRENCY = "currency", _("Currency")
+    ISSUER = "issuer", _("Issuer")
+    COUNTRY = "country", _("Country")
+    INSTRUMENT_GROUP = "instrument_group", _("Instrument Group")
+    INSTRUMENT_TYPE = "instrument_type", _("Instrument Type")
+
+
+class ExposureResult(OrganizationOwnedModel):
+    """
+    ExposureResult model storing computed exposure results for a valuation run.
+
+    Stores exposure computations for fast queries and reproducibility (stored aggregates
+    pattern, same as ValuationRun aggregates). Each record represents the total exposure
+    to a specific dimension value (currency, issuer, country, etc.) within a valuation run.
+
+    Attributes:
+        valuation_run (ValuationRun): The valuation run this exposure belongs to.
+        dimension_type (str): Type of dimension ('currency', 'issuer', 'country', etc.).
+        dimension_key (str): Key value (currency code, issuer_id, country code, etc.).
+        dimension_label (str): Human-readable label (issuer name, country name, etc.).
+        value_base (Money): Exposure value in portfolio base currency.
+        pct_total (Decimal): Percentage of total portfolio value.
+        as_of_date (date): As-of date (denormalized from run for indexing).
+
+    Example:
+        >>> run = ValuationRun.objects.get(id=1)
+        >>> exposure = ExposureResult.objects.create(
+        ...     valuation_run=run,
+        ...     dimension_type=ExposureDimensionType.CURRENCY,
+        ...     dimension_key="USD",
+        ...     dimension_label="US Dollar",
+        ...     value_base=Money(500000, "XAF"),
+        ...     pct_total=Decimal("50.00"),
+        ...     as_of_date=run.as_of_date
+        ... )
+    """
+
+    valuation_run = models.ForeignKey(
+        ValuationRun,
+        on_delete=models.CASCADE,
+        related_name="exposure_results",
+        help_text="Valuation run this exposure belongs to.",
+    )
+    dimension_type = models.CharField(
+        _("Dimension Type"),
+        max_length=30,
+        choices=ExposureDimensionType.choices,
+        help_text="Type of dimension (currency, issuer, country, etc.).",
+    )
+    dimension_key = models.CharField(
+        _("Dimension Key"),
+        max_length=255,
+        help_text="Key value (currency code, issuer_id, country code, etc.).",
+    )
+    dimension_label = models.CharField(
+        _("Dimension Label"),
+        max_length=255,
+        help_text="Human-readable label (issuer name, country name, etc.).",
+    )
+    value_base = MoneyField(
+        _("Value (Base Currency)"),
+        max_digits=20,
+        decimal_places=6,
+        help_text="Exposure value in portfolio base currency.",
+    )
+    pct_total = models.DecimalField(
+        _("Percentage of Total"),
+        max_digits=10,
+        decimal_places=4,
+        help_text="Percentage of total portfolio value.",
+    )
+    as_of_date = models.DateField(
+        _("As Of Date"),
+        help_text="As-of date (denormalized from run for indexing).",
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("Exposure Result")
+        verbose_name_plural = _("Exposure Results")
+        ordering = ["valuation_run", "dimension_type", "-value_base"]
+        indexes = [
+            models.Index(
+                fields=[
+                    "organization",
+                    "valuation_run",
+                    "dimension_type",
+                    "dimension_key",
+                ]
+            ),
+            models.Index(fields=["organization", "valuation_run", "as_of_date"]),
+            models.Index(fields=["organization", "dimension_type", "as_of_date"]),
+        ]
+        # One result per run per dimension type per key
+        constraints = [
+            UniqueConstraint(
+                fields=[
+                    "organization",
+                    "valuation_run",
+                    "dimension_type",
+                    "dimension_key",
+                ],
+                name="uniq_exposure_result_run_dimension_key",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        """String representation of the exposure result."""
+        return f"{self.valuation_run} - {self.dimension_type}: {self.dimension_label} ({self.pct_total}%)"
