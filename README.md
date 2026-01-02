@@ -69,8 +69,23 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - **Models**:
     - `PortfolioGroup` - Simple one-level grouping for portfolios
     - `Portfolio` - Investment portfolio container with base currency
-    - `PortfolioImport` - Tracks file uploads and import status
-    - `PositionSnapshot` - Time-series snapshots of positions (immutable)
+    - `PortfolioImport` - Tracks file uploads and import status with row-level error tracking
+    - `PortfolioImportError` - Row-level error tracking for import failures
+    - `PositionSnapshot` - Time-series snapshots of positions (immutable, provenance-tracked)
+  - **Ingestion** (`apps/portfolios/ingestion/`):
+    - `import_excel.py` - Excel/CSV import service with comprehensive validation
+    - `mapping.py` - Column mapping service with auto-detection
+    - `validation.py` - Business rule and format validation
+    - `utils.py` - Utility functions for instrument resolution and duplicate detection
+    - **Features**:
+      - Excel and CSV file support
+      - Automatic column mapping with common abbreviation recognition
+      - Immutable snapshots (never updates existing, creates new ones)
+      - Row-level error tracking with detailed error messages
+      - Idempotency checks (hash-based duplicate detection)
+      - Provenance tracking (links snapshots to imports)
+      - Flexible mapping (price OR market_value, validation ensures one exists)
+      - Bulk operations for performance
   - All models are organization-scoped using `OrganizationOwnedModel`
   - **Testing**: Model tests implemented
 
@@ -79,9 +94,11 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
     - `run_portfolio_daily_close()` - Full orchestration: valuation → exposure → report
     - `run_daily_close()` - Market data ETL orchestration
     - Management command: `run_portfolio_daily_close` for triggering daily close
+  - **Celery Tasks** (`apps/etl/tasks.py`):
+    - `run_daily_close_task()` - Async task for daily close orchestration (requires org_id parameter)
+    - `ping_etl()` - Health check task for ETL system
   - Market data FX daily pipeline (placeholder)
   - Prices daily pipeline (placeholder)
-  - Celery tasks for async processing
 
 - `apps/audit` - Audit logging ✅
   - AuditEvent model implemented
@@ -161,7 +178,8 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 ### 🚧 In Progress / Planned
 
 - **Stress Scenarios**: Deterministic stress scenario engine
-- **Portfolio Ingestion**: CSV/Excel upload and parsing services (models exist, ingestion logic to be implemented)
+- **Portfolio Ingestion Management Command**: CLI command for triggering imports (service is implemented)
+- **Portfolio Ingestion UI**: Web interface for uploading and managing imports (backend service ready)
 - **Admin Interfaces**: Django admin configuration for all models
 - **Reference Data UI**: Web interfaces for managing reference data
 - **ETL Pipeline Implementation**: Complete market data daily pipelines (FX, prices)
@@ -236,13 +254,17 @@ See `libs/README_ORGANIZATION_OWNED_MODEL.md` for detailed usage guide.
 3. **Storage**: Data stored in PostgreSQL with organization scoping where applicable
 
 **Portfolio & Analytics Flow** (Implemented):
-1. **Upload**: User uploads CSV/XLSX → stored in object storage → `PortfolioImport` record created (models exist, ingestion logic to be completed)
-2. **Parse & Normalize** (async): Job validates → maps columns → creates `PositionSnapshot` records (to be implemented)
-3. **Analytics Run** (implemented): 
+1. **Upload & Import** (implemented): 
+   - Create `PortfolioImport` record with uploaded CSV/XLSX file
+   - Call `import_portfolio_from_file()` service function
+   - Service validates, maps columns, creates `PositionSnapshot` records
+   - Row-level errors tracked in `PortfolioImportError` records
+   - Status tracking: PENDING → PARSING → VALIDATING → SUCCESS/FAILED/PARTIAL
+2. **Analytics Run** (implemented): 
    - Create `ValuationRun` → execute valuation → compute and store exposures
    - `run_portfolio_daily_close()` orchestrates: valuation → exposure → report
-4. **Report** (implemented): Render PDF/CSV/Excel from computed results → persist `Report` record
-5. **UI**: User views portfolio → downloads PDF/CSV/Excel (backend ready, UI to be implemented)
+3. **Report** (implemented): Render PDF/CSV/Excel from computed results → persist `Report` record
+4. **UI**: User views portfolio → downloads PDF/CSV/Excel (backend ready, UI to be implemented)
 
 ## Getting Started
 
@@ -390,7 +412,11 @@ hedgemind/
 │   │   └── pipelines/      # Individual ETL pipelines
 │   ├── organizations/      # Multi-tenant organization management ✅
 │   ├── portfolios/         # Portfolio management ✅
-│   │   └── ingestion/      # Portfolio ingestion logic
+│   │   └── ingestion/      # Portfolio ingestion logic ✅
+│   │       ├── import_excel.py  # Excel/CSV import service
+│   │       ├── mapping.py       # Column mapping service
+│   │       ├── validation.py    # Validation logic
+│   │       └── utils.py         # Utility functions
 │   ├── reference_data/     # Reference data (securities, market data) ✅
 │   │   ├── models/         # Model definitions by domain
 │   │   ├── management/     # Management commands for data import
@@ -704,6 +730,70 @@ Market data follows an observation → canonical pattern:
 - Raw observations are imported and stored
 - Canonicalization process creates consolidated records for a given date
 - Supports multiple data sources with selection logic
+
+### Portfolio Models
+
+The platform includes comprehensive portfolio management models:
+
+**Portfolio Structure**:
+- `PortfolioGroup` - Simple one-level grouping for portfolios
+- `Portfolio` - Investment portfolio container with base currency and mandate type
+
+**Portfolio Import & Tracking**:
+- `PortfolioImport` - Tracks file uploads and import status
+  - Status flow: `PENDING` → `PARSING` → `VALIDATING` → `SUCCESS` / `FAILED` / `PARTIAL`
+  - Stores mapping configuration, row counts, error summaries
+  - Idempotency via `inputs_hash` (prevents duplicate imports)
+- `PortfolioImportError` - Row-level error tracking
+  - Stores individual row errors with error type, message, and raw row data
+  - Error types: validation, mapping, reference_data, format, business_rule, system
+  - Enables detailed error reporting and debugging
+
+**Position Snapshots**:
+- `PositionSnapshot` - Immutable time-series snapshots of positions
+  - **Immutability**: Snapshots are never edited - new snapshots created for new dates
+  - **Provenance Tracking**: Links to PortfolioImport, valuation_method, valuation_source
+  - **Unique Constraint**: One snapshot per (portfolio, instrument, as_of_date)
+  - **Fields**: quantity, book_value, market_value, price, accrued_interest
+  - **Valuation Metadata**: valuation_method, valuation_source, last_valuation_date
+
+**Portfolio Ingestion Workflow**:
+1. Create `PortfolioImport` record with uploaded file (CSV/Excel)
+2. Call `import_portfolio_from_file(portfolio_import_id)` service function
+3. Service auto-detects column mapping or uses explicit mapping
+4. Each row is validated and instrument is resolved (by ISIN or ticker)
+5. Valid rows create `PositionSnapshot` records (bulk insert for performance)
+6. Invalid rows create `PortfolioImportError` records with detailed error info
+7. `PortfolioImport` status updated based on results (SUCCESS/FAILED/PARTIAL)
+8. Duplicate snapshots are prevented (immutability enforced)
+
+**Example Usage**:
+```python
+from apps.portfolios.models import Portfolio, PortfolioImport
+from apps.portfolios.ingestion.import_excel import import_portfolio_from_file
+from libs.tenant_context import organization_context
+
+# Within organization context
+with organization_context(org_id=1):
+    portfolio = Portfolio.objects.get(name="My Portfolio")
+    
+    # Create import record (typically done via file upload in UI)
+    portfolio_import = PortfolioImport.objects.create(
+        portfolio=portfolio,
+        file=uploaded_file,  # FileField
+        as_of_date=date.today(),
+        source_type=ImportSourceType.CUSTODIAN,
+    )
+    
+    # Run import
+    result = import_portfolio_from_file(portfolio_import.id)
+    # Returns: {'created': 100, 'errors': 5, 'total_rows': 105, 'status': 'PARTIAL'}
+    
+    # Check errors
+    errors = portfolio_import.errors.all()
+    for error in errors:
+        print(f"Row {error.row_number}: {error.error_message}")
+```
 
 ## Development Guidelines
 
