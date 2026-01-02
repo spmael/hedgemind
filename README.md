@@ -17,9 +17,9 @@ Hedgemind is a **decision intelligence platform** for institutional users—asse
 
 ## Project Status
 
-**Current Phase**: Reference Data & Portfolio Foundation (Active Development)
+**Current Phase**: Analytics Engine & Valuation (Active Development)
 
-The project has a solid foundation with multi-tenant architecture, comprehensive reference data models, and portfolio management infrastructure. Reference data import capabilities are fully implemented, and the platform is ready for analytics engine development.
+The project has a solid foundation with multi-tenant architecture, comprehensive reference data models, portfolio management infrastructure, and a working valuation engine. The platform now supports portfolio valuation runs with policy-based computation, execution context tracking, and audit trails.
 
 ### ✅ Implemented
 
@@ -85,7 +85,30 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - Immutable audit log structure
 
 - `apps/accounts` - User account management 🚧 (scaffolded)
-- `apps/analytics` - Analytics engine 🚧 (scaffolded)
+- `apps/analytics` - Analytics engine ✅
+  - **Models**:
+    - `ValuationRun` - Portfolio valuation runs with policy support
+    - `ValuationPositionResult` - Computed valuation results per position
+  - **Key Features**:
+    - Valuation policy system (USE_SNAPSHOT_MV, REVALUE_FROM_MARKETDATA)
+    - Official run designation with automatic unmarking
+    - `inputs_hash` for data fingerprinting and idempotency
+    - `run_context_id` for execution context tracking (batch operations, audit trail)
+    - Stored aggregates (industry standard): total_market_value, position_count, data quality counts
+    - Status tracking (PENDING → RUNNING → SUCCESS/FAILED)
+    - Execution logging
+  - **Engine** (`apps/analytics/engine/`):
+    - `valuation.py` - Pure Python valuation computation functions
+      - `compute_valuation_policy_a()` - Policy A valuation logic
+    - `aggregation.py` - Pure Python aggregation and summary functions
+      - `recalculate_total_market_value()` - Recalculate total from results
+      - `compute_data_quality_summary()` - Aggregate data quality metrics
+      - `compute_aggregates_from_results()` - Compute aggregates during execution
+    - **Architecture**: Separation of concerns - computation logic separate from data models
+      - Models store data and provide simple getters
+      - Engine functions perform all computation (pure functions, testable without Django)
+      - Follows data engineering best practices (industry standard)
+  - **Testing**: Comprehensive test coverage (800+ lines)
 - `apps/reports` - Report generation 🚧 (scaffolded, templates directory exists)
 
 #### Libraries (`libs/`)
@@ -143,8 +166,12 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 ┌─────────────────────────────────────────────────────────┐
 │            Analytics Engine (Python Module)              │
 │  - Pure-Python functions/classes                        │
+│  - Valuation computation (valuation.py)                │
+│  - Aggregation functions (aggregation.py)               │
 │  - Normalized holdings + market data → exposures        │
 │  - Produces report schema (JSON)                        │
+│  - Separation of concerns: computation separate from    │
+│    data models (data engineering best practice)        │
 └─────────────────────────────────────────────────────────┘
                           │
                           ▼
@@ -316,8 +343,10 @@ pytest tests/organizations/test_models.py
 hedgemind/
 ├── apps/                    # Django applications
 │   ├── accounts/           # User accounts management (scaffolded)
-│   ├── analytics/          # Analytics and metrics (scaffolded)
-│   │   └── engine/         # Analytics engine (pure Python)
+│   ├── analytics/          # Analytics and metrics ✅
+│   │   ├── engine/         # Analytics engine (pure Python)
+│   │   │   ├── valuation.py    # Valuation computation
+│   │   │   └── aggregation.py # Aggregation functions
 │   ├── audit/              # Audit logging ✅
 │   ├── etl/                # ETL pipelines and orchestration 🚧
 │   │   ├── orchestration/  # Daily close orchestration
@@ -360,6 +389,212 @@ hedgemind/
 ```
 
 ## Key Concepts
+
+### Analytics Engine Architecture
+
+The analytics engine follows **data engineering best practices** by separating computation logic from data storage:
+
+**Design Principles**:
+- **Models** (`apps/analytics/models.py`): Store data, provide simple getters for stored fields
+- **Engine** (`apps/analytics/engine/`): Pure Python functions for all computation
+  - `valuation.py`: Valuation computation logic
+  - `aggregation.py`: Aggregation and summary functions
+
+**Benefits**:
+- **Testability**: Engine functions are pure and testable without Django dependencies
+- **Reusability**: Functions can be used in different contexts (views, tasks, scripts)
+- **Maintainability**: Clear separation makes code easier to understand and modify
+- **Industry Standard**: Aligns with how Aladdin, Bloomberg, and other platforms structure analytics
+- **Future-Proof**: Engine can be extracted to microservice if needed without rewriting logic
+
+**Example**:
+```python
+# Model: Simple getter for stored aggregate
+run.get_total_market_value()  # Returns stored field (fast)
+
+# Engine: Pure function for computation
+from apps.analytics.engine.aggregation import recalculate_total_market_value
+recalculated = recalculate_total_market_value(run)  # Recomputes from results
+```
+
+**Stored Aggregates** (Industry Standard):
+- `total_market_value`: Total portfolio value (stored for performance)
+- `position_count`: Number of positions (stored aggregate)
+- `positions_with_issues`: Data quality issue count (stored aggregate)
+- `missing_fx_count`: Missing FX rate count (stored aggregate)
+
+These aggregates are computed during `execute()` and stored for fast queries, following the same pattern used by institutional platforms.
+
+### Critical Fields for Pitch Book & Understanding
+
+This section highlights the most important fields and concepts in Hedgemind that demonstrate the platform's institutional-grade design, auditability, and operational excellence.
+
+#### `inputs_hash` and `run_context_id` (ValuationRun)
+
+These two fields work together to provide both **data integrity** and **execution traceability**, following industry best practices similar to Aladdin's `run_group` concept.
+
+**`inputs_hash`** - Data Fingerprint
+- **Purpose**: Deterministic hash of position snapshots + market data + valuation policy
+- **Answers**: "Did the data change?"
+- **Use Cases**:
+  - **Idempotency**: Prevents duplicate computation when inputs are identical
+  - **Reproducibility**: Ensures same inputs produce same results
+  - **Change Detection**: Quickly identify when underlying data has changed
+- **Computation**: SHA256 hash of sorted position snapshot IDs + as_of_date + valuation_policy
+- **Uniqueness**: Database constraint prevents duplicate runs with same inputs (when hash is set)
+
+**`run_context_id`** - Execution Context
+- **Purpose**: Identifier for execution context and configuration
+- **Answers**: "Under what configuration and intent was this executed?"
+- **Use Cases**:
+  - **Batch Operations**: Group multiple portfolio runs executed together with same settings
+  - **Audit Trail**: Track what configuration/parameters were used for each run
+  - **Reproducibility**: "Re-run with same config as run_context_id X"
+  - **Single & Batch**: Works for both single-portfolio and batch portfolio runs
+- **Format**: Flexible (UUIDs, custom identifiers like "batch-2025-01-15-001", "daily-close-2025-01-15")
+- **Querying**: Use `ValuationRun.objects.with_run_context(run_context_id)` to find all runs in a batch
+
+**Key Distinction**:
+- `inputs_hash` = **What data** was used (data fingerprint)
+- `run_context_id` = **How it was run** (execution context)
+- These fields are **orthogonal** - same data can be run with different contexts, different data can share same context
+
+**Example Scenarios**:
+```python
+# Scenario 1: Same data, different configs
+run1 = ValuationRun.objects.create(..., inputs_hash="abc123", run_context_id="config-v1")
+run2 = ValuationRun.objects.create(..., inputs_hash="abc123", run_context_id="config-v2")
+# Same inputs, different execution contexts
+
+# Scenario 2: Batch run with same config
+run1 = ValuationRun.objects.create(..., inputs_hash="abc123", run_context_id="batch-001")
+run2 = ValuationRun.objects.create(..., inputs_hash="def456", run_context_id="batch-001")
+# Different inputs, same execution context (batch operation)
+
+# Scenario 3: Query all runs in a batch
+batch_runs = ValuationRun.objects.with_run_context("batch-001")
+# Returns all runs executed together in batch-001
+```
+
+#### `is_official` (ValuationRun)
+
+**Purpose**: Marks the authoritative valuation run for a portfolio/date combination.
+
+**Key Features**:
+- **Single Official Run**: Only one run can be marked as official per portfolio/date
+- **Automatic Unmarking**: Marking a new run as official automatically unmarks the previous one
+- **Status Requirement**: Only SUCCESS runs can be marked as official
+- **Audit Trail**: All official marking/unmarking actions are logged in AuditEvent
+- **Use Case**: Ensures clear governance - "This is the valuation we're using for reporting/decision-making"
+
+**Example**:
+```python
+# Mark a successful run as official
+run.mark_as_official(reason="Approved by portfolio manager", actor=user)
+# Previous official run for same portfolio/date is automatically unmarked
+# Audit event is created with full context
+```
+
+#### `valuation_policy` (ValuationRun)
+
+**Purpose**: Defines the methodology used for portfolio valuation.
+
+**Available Policies**:
+- `USE_SNAPSHOT_MV`: Trust PositionSnapshot.market_value (MVP default, handles messy local data)
+- `REVALUE_FROM_MARKETDATA`: Compute from prices + FX (future, for clean market data)
+
+**Why It Matters**: Different institutions have different data quality. This policy allows the platform to handle both:
+- **Messy local data**: Use custodian-provided market values directly
+- **Clean market data**: Recompute from prices and FX rates
+
+#### `as_of_date` (ValuationRun, PositionSnapshot, PortfolioImport)
+
+**Purpose**: Time-series point-in-time snapshot identifier.
+
+**Critical for**:
+- **Historical Analysis**: Track portfolio changes over time
+- **Regulatory Reporting**: "As of December 31, 2024" valuations
+- **Audit Trail**: "What was the portfolio on this date?"
+- **Reproducibility**: Re-run analytics for any historical date
+
+**Design Pattern**: All time-series data uses `as_of_date` to create immutable snapshots. Never edit existing snapshots - create new ones for new dates.
+
+#### `valuation_method` and `valuation_source` (PositionSnapshot)
+
+**Purpose**: Explicit valuation provenance tracking for defensibility.
+
+**Valuation Methods** (from reference_data.ValuationMethod):
+- `MARK_TO_MARKET`: Public market prices
+- `MARK_TO_MODEL`: Model-based valuation
+- `EXTERNAL_APPRAISAL`: Third-party valuation
+- `MANUAL_DECLARED`: Manual entry
+
+**Valuation Sources**:
+- `CUSTODIAN`: Custodian-provided values
+- `MARKET`: Market data provider
+- `INTERNAL`: Internal valuation team
+- `EXTERNAL`: External valuation firm
+- `MANUAL`: Manual entry
+
+**Why Critical**: Institutional users must defend valuations to boards, regulators, and auditors. These fields provide explicit provenance: "This position was valued using [method] from [source] on [date]."
+
+#### `status` Fields (ValuationRun, PortfolioImport)
+
+**Purpose**: Track execution state through lifecycle.
+
+**ValuationRun Status Flow**:
+- `PENDING` → `RUNNING` → `SUCCESS` / `FAILED`
+
+**PortfolioImport Status Flow**:
+- `PENDING` → `PARSING` → `SUCCESS` / `FAILED` / `PARTIAL`
+
+**Why Important**: 
+- **User Experience**: Clear feedback on operation progress
+- **Error Handling**: Failed operations can be retried
+- **Monitoring**: Track system health and success rates
+- **Audit**: Historical record of what succeeded/failed
+
+#### Organization Scoping (All Business Data)
+
+**Purpose**: Multi-tenant data isolation at the database level.
+
+**Implementation**: All business data models inherit from `OrganizationOwnedModel`, which:
+- Automatically adds `organization` ForeignKey
+- Filters all queries by current organization context
+- Prevents accidental cross-organization data access
+- Auto-sets organization_id from thread-local context
+
+**Why Critical for Institutions**:
+- **Data Security**: Complete isolation between clients
+- **Compliance**: Ensures data cannot leak across organizations
+- **Scalability**: Single database, organization-scoped (can scale to schema-per-tenant later)
+
+#### Audit Trail (AuditEvent)
+
+**Purpose**: Immutable append-only log of all significant operations.
+
+**Tracks**:
+- **Who**: User (actor) who performed the action
+- **What**: Action type (CREATE, UPDATE, DELETE, MARK_VALUATION_OFFICIAL, etc.)
+- **What Object**: Object type and ID affected
+- **When**: Timestamp of the action
+- **Context**: Additional metadata as JSON
+
+**Why Critical**:
+- **Regulatory Compliance**: Required for institutional trust
+- **Forensics**: "Who changed what and when?"
+- **Governance**: Track official valuation approvals, data imports, etc.
+- **Non-Repudiation**: Immutable log cannot be altered
+
+**Example**:
+```python
+# Marking valuation as official creates audit event
+run.mark_as_official(reason="Board approval", actor=user)
+# Creates AuditEvent with:
+# - action: "MARK_VALUATION_OFFICIAL"
+# - object_type: "ValuationRun"
+# - metadata: {reason, portfolio_id, as_of_date, previous_official_run_id, ...}
+```
 
 ### Organization Context
 
