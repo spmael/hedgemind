@@ -217,9 +217,9 @@ def render_csv_report(valuation_run: ValuationRun) -> bytes:
             [exp.dimension_label, str(exp.value_base), f"{exp.pct_total:.2f}%"]
         )
 
-    # Convert string output to bytes (UTF-8 encoding)
+    # Convert string output to bytes (UTF-8-sig encoding for Excel compatibility)
     output.seek(0)
-    return output.getvalue().encode("utf-8")
+    return output.getvalue().encode("utf-8-sig")
 
 
 def render_excel_report(valuation_run: ValuationRun) -> bytes:

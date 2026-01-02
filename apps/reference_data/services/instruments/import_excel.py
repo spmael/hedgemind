@@ -19,14 +19,9 @@ from decimal import Decimal
 import pandas as pd
 from dateutil.relativedelta import relativedelta
 
-from apps.reference_data.models import (
-    FundCategory,
-    Instrument,
-    InstrumentGroup,
-    InstrumentType,
-    Issuer,
-    ValuationMethod,
-)
+from apps.reference_data.models import (FundCategory, Instrument,
+                                        InstrumentGroup, InstrumentType,
+                                        Issuer, ValuationMethod)
 from libs.tenant_context import get_current_org_id
 
 
@@ -81,7 +76,7 @@ def import_instruments_from_file(
 
     # Read Excel file
     try:
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine="openpyxl")
     except Exception as e:
         raise ValueError(f"Failed to read Excel file: {str(e)}")
 

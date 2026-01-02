@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Import Status - Hedgemind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.pending,
+        .status.parsing,
+        .status.validating,
+        .status.processing,
+        .status.importing {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+        .status.failed {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .status.partial {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        .info-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .info-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: 600;
+            width: 200px;
+            color: #555;
+        }
+        .info-value {
+            flex: 1;
+            color: #333;
+        }
+        .progress {
+            margin-top: 10px;
+        }
+        .progress-bar {
+            background-color: #e9ecef;
+            border-radius: 4px;
+            height: 24px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            background-color: #0066cc;
+            height: 100%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 12px;
+        }
+        .errors {
+            margin-top: 20px;
+        }
+        .errors h3 {
+            color: #dc3545;
+            margin-bottom: 10px;
+        }
+        .error-list {
+            list-style: none;
+            padding: 0;
+        }
+        .error-item {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .error-item strong {
+            color: #721c24;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    {% if auto_refresh %}
+    <script>
+        setTimeout(function() {
+            location.reload();
+        }, 3000); // Refresh every 3 seconds
+    </script>
+    {% endif %}
+</head>
+<body>
+    <h1>Import Status</h1>
+
+    <div class="status {{ import.status }}">
+        Status: {{ import.get_status_display }}
+    </div>
+
+    <div class="info-section">
+        <div class="info-row">
+            <span class="info-label">Portfolio:</span>
+            <span class="info-value">{{ import.portfolio.name }} - {{ import.portfolio.full_name|default:"" }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">As-of Date:</span>
+            <span class="info-value">{{ import.as_of_date }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">File:</span>
+            <span class="info-value">{{ import.file.name }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Created:</span>
+            <span class="info-value">{{ import.created_at }}</span>
+        </div>
+        {% if import.completed_at %}
+        <div class="info-row">
+            <span class="info-label">Completed:</span>
+            <span class="info-value">{{ import.completed_at }}</span>
+        </div>
+        {% endif %}
+        {% if import.rows_total > 0 %}
+        <div class="info-row">
+            <span class="info-label">Progress:</span>
+            <span class="info-value">
+                {{ import.rows_processed }} / {{ import.rows_total }} rows
+                <div class="progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: {% widthratio import.rows_processed import.rows_total 100 %}%">
+                            {% widthratio import.rows_processed import.rows_total 100 %}%
+                        </div>
+                    </div>
+                </div>
+            </span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if import.error_message %}
+    <div class="info-section" style="background-color: #f8d7da; border-left: 4px solid #dc3545;">
+        <strong>Error:</strong> {{ import.error_message }}
+    </div>
+    {% endif %}
+
+    {% if errors %}
+    <div class="errors">
+        <h3>Import Errors (showing first 20)</h3>
+        <ul class="error-list">
+            {% for error in errors %}
+            <li class="error-item">
+                <strong>Row {{ error.row_number }}</strong>
+                {% if error.column_name %}({{ error.column_name }}){% endif %}:
+                [{{ error.get_error_type_display }}] {{ error.error_message }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    {% if preflight_result %}
+    <div class="info-section" style="margin-top: 30px;">
+        <h2>Preflight Validation</h2>
+        
+        {% if preflight_result.ready %}
+        <div class="status success" style="margin-top: 10px;">
+            ✓ Ready to import - All required reference data is available
+        </div>
+        {% else %}
+        <div class="status failed" style="margin-top: 10px;">
+            ✗ Not ready to import - Missing reference data detected
+        </div>
+        {% endif %}
+
+        {% if preflight_result.missing_instruments %}
+        <div style="margin-top: 15px;">
+            <h3 style="color: #dc3545;">Missing Instruments ({{ preflight_result.missing_instruments|length }})</h3>
+            <ul style="list-style: none; padding: 0;">
+                {% for identifier in preflight_result.missing_instruments|slice:":10" %}
+                <li style="padding: 5px 0; border-bottom: 1px solid #dee2e6;">{{ identifier }}</li>
+                {% endfor %}
+                {% if preflight_result.missing_instruments|length > 10 %}
+                <li style="padding: 5px 0; color: #666;">... and {{ preflight_result.missing_instruments|length|add:"-10" }} more</li>
+                {% endif %}
+            </ul>
+            <form method="post" action="{% url 'portfolios:export_missing_instruments' import.id %}" style="margin-top: 10px;">
+                {% csrf_token %}
+                <button type="submit" style="background-color: #0066cc; color: white; padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;">
+                    Export Missing Instruments CSV
+                </button>
+            </form>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                Export missing instruments, fill the CSV with instrument details, then import using:<br>
+                <code>python manage.py import_instruments_excel --file missing_instruments.csv --org-id {{ import.organization.id }}</code>
+            </p>
+        </div>
+        {% endif %}
+
+        {% if preflight_result.missing_fx_rates %}
+        <div style="margin-top: 15px;">
+            <h3 style="color: #ffc107;">Missing FX Rates ({{ preflight_result.missing_fx_rates|length }})</h3>
+            <ul style="list-style: none; padding: 0;">
+                {% for fx in preflight_result.missing_fx_rates %}
+                <li style="padding: 5px 0; border-bottom: 1px solid #dee2e6;">
+                    {{ fx.from }} → {{ fx.to }} ({{ fx.date }})
+                </li>
+                {% endfor %}
+            </ul>
+            <p style="margin-top: 10px; color: #666; font-size: 14px;">
+                Import FX rates for the missing currency pairs and date.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if preflight_result.missing_prices %}
+        <div style="margin-top: 15px;">
+            <h3 style="color: #856404;">Missing Prices ({{ preflight_result.missing_prices|length }}) - Warning</h3>
+            <p style="color: #666; font-size: 14px;">
+                Some instruments are missing prices. This is a warning only - import can proceed if using USE_SNAPSHOT_MV valuation policy.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if preflight_result.missing_curves %}
+        <div style="margin-top: 15px;">
+            <h3 style="color: #856404;">Missing Yield Curves ({{ preflight_result.missing_curves|length }}) - Warning</h3>
+            <p style="color: #666; font-size: 14px;">
+                Some bond instruments are missing yield curve data. This is a warning only for MVP.
+            </p>
+        </div>
+        {% endif %}
+
+        {% if preflight_result.warnings %}
+        <div style="margin-top: 15px;">
+            <h3 style="color: #856404;">Warnings</h3>
+            <ul style="list-style: none; padding: 0;">
+                {% for warning in preflight_result.warnings %}
+                <li style="padding: 5px 0; border-bottom: 1px solid #dee2e6; color: #856404;">⚠ {{ warning }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% endif %}
+
+        <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #dee2e6;">
+            {% if preflight_result.ready %}
+            <form method="post" action="{% url 'portfolios:start_import' import.id %}" style="display: inline;">
+                {% csrf_token %}
+                <button type="submit" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; font-weight: 600;">
+                    Start Import
+                </button>
+            </form>
+            {% else %}
+            <p style="color: #dc3545; font-weight: 600;">
+                Please resolve missing reference data before starting import.
+            </p>
+            {% endif %}
+            
+            <form method="post" action="{% url 'portfolios:run_preflight' import.id %}" style="display: inline; margin-left: 10px;">
+                {% csrf_token %}
+                <button type="submit" style="background-color: #6c757d; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                    Re-run Preflight
+                </button>
+            </form>
+        </div>
+    </div>
+    {% elif import.status == "pending" %}
+    <div class="info-section" style="margin-top: 30px;">
+        <h2>Preflight Validation</h2>
+        <p>Preflight validation not yet run. Click below to validate reference data before importing.</p>
+        <form method="post" action="{% url 'portfolios:run_preflight' import.id %}">
+            {% csrf_token %}
+            <button type="submit" style="background-color: #0066cc; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
+                Run Preflight Validation
+            </button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% if import.status == "success" %}
+    <p style="margin-top: 20px;"><a href="{% url 'portfolios:upload_holdings' %}">Upload Another File</a></p>
+    {% elif import.status == "failed" %}
+    <p style="margin-top: 20px;"><a href="{% url 'portfolios:upload_holdings' %}">Try Again</a></p>
+    {% endif %}
+</body>
+</html>
+

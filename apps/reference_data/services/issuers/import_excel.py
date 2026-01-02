@@ -66,7 +66,7 @@ def import_issuers_from_file(
 
     # Read Excel file
     try:
-        df = pd.read_excel(file_path, sheet_name=sheet_name)
+        df = pd.read_excel(file_path, sheet_name=sheet_name, engine="openpyxl")
     except Exception as e:
         raise ValueError(f"Failed to read Excel file: {str(e)}")
 

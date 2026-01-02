@@ -23,6 +23,7 @@ from apps.reference_data.models import (
     InstrumentPriceObservation,
     SelectionReason,
 )
+from apps.reference_data.utils.priority import get_effective_priority
 
 
 def canonicalize_prices(
@@ -140,7 +141,8 @@ def canonicalize_prices(
             best_revision = -1
 
             for obs in obs_list:
-                priority = obs.source.priority
+                # Get effective priority (org-specific override or global)
+                priority = get_effective_priority(obs.source, "price")
                 revision = obs.revision
 
                 if best_obs is None:

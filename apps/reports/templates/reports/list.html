@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reports - Hedgemind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .filters {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .filters form {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        .form-group {
+            flex: 1;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+            font-size: 14px;
+        }
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            height: fit-content;
+        }
+        button:hover {
+            background-color: #0052a3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: white;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+        th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #555;
+        }
+        tr:hover {
+            background-color: #f8f9fa;
+        }
+        .status {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .status.success {
+            background-color: #d4edda;
+            color: #155724;
+        }
+        .status.failed {
+            background-color: #f8d7da;
+            color: #721c24;
+        }
+        .status.generating,
+        .status.pending {
+            background-color: #fff3cd;
+            color: #856404;
+        }
+        .download-links {
+            display: flex;
+            gap: 8px;
+        }
+        .download-links a {
+            padding: 4px 8px;
+            background-color: #0066cc;
+            color: white;
+            text-decoration: none;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .download-links a:hover {
+            background-color: #0052a3;
+        }
+        .empty {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+    </style>
+</head>
+<body>
+    <h1>Reports</h1>
+
+    <div class="filters">
+        <form method="get">
+            <div class="form-group">
+                <label for="portfolio">Filter by Portfolio:</label>
+                <select name="portfolio" id="portfolio">
+                    <option value="">All Portfolios</option>
+                    {% for portfolio in portfolios %}
+                        <option value="{{ portfolio.id }}" {% if selected_portfolio_id and selected_portfolio_id|stringformat:"s" == portfolio.id|stringformat:"s" %}selected{% endif %}>
+                            {{ portfolio.name }} - {{ portfolio.full_name|default:"" }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <button type="submit">Filter</button>
+        </form>
+    </div>
+
+    {% if reports %}
+    <table>
+        <thead>
+            <tr>
+                <th>Portfolio</th>
+                <th>As-of Date</th>
+                <th>Template</th>
+                <th>Status</th>
+                <th>Generated</th>
+                <th>Downloads</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for report in reports %}
+            <tr>
+                <td>{{ report.valuation_run.portfolio.name }}</td>
+                <td>{{ report.valuation_run.as_of_date }}</td>
+                <td>{{ report.template.name }}</td>
+                <td>
+                    <span class="status {{ report.status }}">{{ report.get_status_display }}</span>
+                </td>
+                <td>{{ report.generated_at|default:"—" }}</td>
+                <td>
+                    {% if report.status == "success" %}
+                    <div class="download-links">
+                        {% if report.pdf_file %}
+                        <a href="{% url 'reports:download_report' report.id 'pdf' %}">PDF</a>
+                        {% endif %}
+                        {% if report.csv_file %}
+                        <a href="{% url 'reports:download_report' report.id 'csv' %}">CSV</a>
+                        {% endif %}
+                        {% if report.excel_file %}
+                        <a href="{% url 'reports:download_report' report.id 'excel' %}">Excel</a>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <span style="color: #999;">—</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty">
+        <p>No reports found.</p>
+    </div>
+    {% endif %}
+</body>
+</html>
+

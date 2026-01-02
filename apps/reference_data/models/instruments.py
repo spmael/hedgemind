@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from django.conf import settings
 from django.db import models
+from django.db.models import UniqueConstraint
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 from djmoney.models.fields import CurrencyField
@@ -311,6 +312,18 @@ class Instrument(OrganizationOwnedModel):
             models.Index(fields=["organization", "first_listing_date"]),
             models.Index(fields=["organization", "next_coupon_date"]),
             models.Index(fields=["organization", "fund_category"]),
+        ]
+        constraints = [
+            UniqueConstraint(
+                fields=["organization", "isin"],
+                name="unique_instrument_isin_per_org_not_null",
+                condition=~models.Q(isin__isnull=True) & ~models.Q(isin=""),
+            ),
+            UniqueConstraint(
+                fields=["organization", "ticker"],
+                name="unique_instrument_ticker_per_org_not_null",
+                condition=~models.Q(ticker__isnull=True) & ~models.Q(ticker=""),
+            ),
         ]
 
     def __str__(self) -> str:

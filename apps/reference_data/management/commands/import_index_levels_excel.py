@@ -254,7 +254,7 @@ class Command(BaseCommand):
 
         try:
             df = pd.read_excel(
-                file_path, sheet_name=options.get("sheet", "INDEX_LEVELS")
+                file_path, sheet_name=options.get("sheet", "INDEX_LEVELS"), engine="openpyxl"
             )
             if "index_code" not in df.columns:
                 raise CommandError("Excel file must contain 'index_code' column")

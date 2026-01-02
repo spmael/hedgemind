@@ -4,7 +4,10 @@ Management command to load all canonical reference data.
 This command loads both instrument groups and types in a single operation.
 It's a convenience wrapper around load_instrument_groups and load_instrument_types.
 
-These are global reference data (shared across all organizations).
+These are global reference data (shared across all organizations) - static taxonomy only.
+
+Note: This command handles static taxonomy (InstrumentGroup, InstrumentType).
+For market data sources (deployment-specific), use sync_market_data_sources command.
 
 Usage:
     python manage.py load_reference_data
@@ -39,7 +42,8 @@ class Command(BaseCommand):
     """
 
     help = (
-        "Load all canonical reference data (groups and types) - global reference data"
+        "Load all canonical reference data (groups and types) - global reference data, "
+        "static taxonomy only. Use sync_market_data_sources for market data sources."
     )
 
     def add_arguments(self, parser):

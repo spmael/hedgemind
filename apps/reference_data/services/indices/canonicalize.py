@@ -17,9 +17,13 @@ from datetime import date
 from django.db.models import Q
 from django.utils import timezone
 
-from apps.reference_data.models import (MarketIndex, MarketIndexValue,
-                                        MarketIndexValueObservation,
-                                        SelectionReason)
+from apps.reference_data.models import (
+    MarketIndex,
+    MarketIndexValue,
+    MarketIndexValueObservation,
+    SelectionReason,
+)
+from apps.reference_data.utils.priority import get_effective_priority
 
 
 def canonicalize_index_values(
@@ -113,7 +117,8 @@ def canonicalize_index_values(
             best_revision = -1
 
             for obs in obs_list:
-                priority = obs.source.priority
+                # Get effective priority (org-specific override or global)
+                priority = get_effective_priority(obs.source, "index_value")
                 revision = obs.revision
 
                 if best_obs is None:
@@ -154,7 +159,9 @@ def canonicalize_index_values(
                 updated += 1
 
         except Exception as e:
-            errors.append(f"Error processing index_id={index_id}, date={obs_date}: {str(e)}")
+            errors.append(
+                f"Error processing index_id={index_id}, date={obs_date}: {str(e)}"
+            )
 
     return {
         "created": created,
@@ -163,4 +170,3 @@ def canonicalize_index_values(
         "errors": errors,
         "total_groups": len(grouped),
     }
-

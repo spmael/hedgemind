@@ -133,9 +133,10 @@ def import_portfolio_from_file(
     # 3. File Reading
     try:
         if file_path.endswith(".csv"):
-            df = pd.read_csv(file_path)
+            # Use utf-8-sig to handle UTF-8 BOM (Excel-compatible CSV files)
+            df = pd.read_csv(file_path, encoding="utf-8-sig")
         else:
-            df = pd.read_excel(file_path, sheet_name=sheet_name or 0)
+            df = pd.read_excel(file_path, sheet_name=sheet_name or 0, engine="openpyxl")
     except Exception as e:
         portfolio_import.status = ImportStatus.FAILED
         portfolio_import.error_message = f"Failed to read file: {str(e)}"

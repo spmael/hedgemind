@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Holdings - Hedgemind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 800px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #555;
+        }
+        input[type="text"],
+        input[type="date"],
+        input[type="file"],
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #0066cc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0052a3;
+        }
+        .messages {
+            margin-bottom: 20px;
+        }
+        .messages .error {
+            background-color: #fee;
+            border-left: 4px solid #c00;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .messages .success {
+            background-color: #efe;
+            border-left: 4px solid #0c0;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Upload Portfolio Holdings</h1>
+
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages %}
+                <div class="{{ message.tags }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        
+        <div class="form-group">
+            <label for="portfolio">Portfolio *</label>
+            <select name="portfolio" id="portfolio" required>
+                <option value="">Select a portfolio...</option>
+                {% for portfolio in portfolios %}
+                    <option value="{{ portfolio.id }}">{{ portfolio.name }} - {{ portfolio.full_name|default:"" }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label for="as_of_date">As-of Date *</label>
+            <input type="date" name="as_of_date" id="as_of_date" required>
+        </div>
+
+        <div class="form-group">
+            <label for="file">File (CSV or Excel) *</label>
+            <input type="file" name="file" id="file" accept=".csv,.xlsx,.xls" required>
+        </div>
+
+        <button type="submit">Upload and Import</button>
+    </form>
+</body>
+</html>
+

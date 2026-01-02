@@ -7,6 +7,7 @@ Models for entities that issue financial instruments and their credit ratings.
 from __future__ import annotations
 
 from django.db import models
+from django.db.models import UniqueConstraint
 from django.utils.translation import gettext_lazy as _
 from django_countries.fields import CountryField
 
@@ -23,7 +24,9 @@ class Issuer(OrganizationOwnedModel):
 
     Attributes:
         name (str): Full legal name of the issuer.
+        issuer_code (str): Stable identifier code for cross-org consistency (globally unique).
         short_name (str, optional): Short name or abbreviation.
+        lei (str, optional): Legal Entity Identifier (20-character code).
         country (str): Country code of the issuer's domicile.
         issuer_group (str, optional): Group classification (e.g., "Sovereign", "Corporate").
         rating (str, optional): Credit rating (e.g., "AAA", "BB+").
@@ -43,8 +46,23 @@ class Issuer(OrganizationOwnedModel):
     """
 
     name = models.CharField(_("Name"), max_length=255)
+    issuer_code = models.CharField(
+        _("Issuer Code"),
+        max_length=50,
+        blank=True,
+        null=True,
+        db_index=True,
+        help_text="Stable identifier code for cross-org consistency (globally unique).",
+    )
     short_name = models.CharField(
         _("Short Name"), max_length=255, blank=True, null=True
+    )
+    lei = models.CharField(
+        _("LEI"),
+        max_length=30,
+        blank=True,
+        null=True,
+        help_text="Legal Entity Identifier (20-character code).",
     )
     country = CountryField(_("Country"), max_length=2, blank=True, null=True)
     issuer_group = models.CharField(
@@ -65,8 +83,14 @@ class Issuer(OrganizationOwnedModel):
             models.Index(fields=["organization", "name"]),
             models.Index(fields=["organization", "country"]),
             models.Index(fields=["organization", "issuer_group"]),
+            models.Index(fields=["issuer_code"]),
         ]
         unique_together = [["organization", "name"]]
+        constraints = [
+            UniqueConstraint(
+                fields=["organization", "issuer_code"], name="unique_issuer_per_org"
+            )
+        ]
 
     def __str__(self) -> str:
         return self.name

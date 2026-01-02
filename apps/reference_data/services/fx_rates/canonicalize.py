@@ -20,6 +20,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from apps.reference_data.models import FXRate, FXRateObservation, SelectionReason
+from apps.reference_data.utils.priority import get_effective_priority
 
 
 def canonicalize_fx_rates(
@@ -110,16 +111,17 @@ def canonicalize_fx_rates(
 
         # Sort by: priority (asc), revision (desc), observed_at (desc)
         # Lower priority number = higher priority
+        # Use effective priority (org-specific override or global)
         buy_obs_list.sort(
             key=lambda x: (
-                x.source.priority,
+                get_effective_priority(x.source, "fx_rate"),
                 -x.revision,
                 -x.observed_at.timestamp() if x.observed_at else 0,
             )
         )
         sell_obs_list.sort(
             key=lambda x: (
-                x.source.priority,
+                get_effective_priority(x.source, "fx_rate"),
                 -x.revision,
                 -x.observed_at.timestamp() if x.observed_at else 0,
             )

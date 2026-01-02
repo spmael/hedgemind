@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Close Status - Hedgemind</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #0066cc;
+            padding-bottom: 10px;
+        }
+        .status {
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-weight: 600;
+        }
+        .status.pending,
+        .status.running {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            color: #856404;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            color: #155724;
+        }
+        .status.failed {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            color: #721c24;
+        }
+        .info-section {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+        .info-row {
+            display: flex;
+            padding: 8px 0;
+            border-bottom: 1px solid #dee2e6;
+        }
+        .info-row:last-child {
+            border-bottom: none;
+        }
+        .info-label {
+            font-weight: 600;
+            width: 200px;
+            color: #555;
+        }
+        .info-value {
+            flex: 1;
+            color: #333;
+        }
+        .official-badge {
+            display: inline-block;
+            background-color: #28a745;
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 10px;
+        }
+        .actions {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #dee2e6;
+        }
+        .actions form {
+            display: inline-block;
+            margin-right: 10px;
+        }
+        button, .button {
+            background-color: #0066cc;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        button:hover, .button:hover {
+            background-color: #0052a3;
+        }
+        button.secondary {
+            background-color: #6c757d;
+        }
+        button.secondary:hover {
+            background-color: #5a6268;
+        }
+        .mark-official-form {
+            background-color: #e7f3ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 20px;
+        }
+        .mark-official-form textarea {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-bottom: 10px;
+            min-height: 80px;
+        }
+        .errors {
+            background-color: #f8d7da;
+            border-left: 4px solid #dc3545;
+            padding: 15px;
+            margin-top: 20px;
+        }
+        .errors h3 {
+            color: #721c24;
+            margin-top: 0;
+        }
+        .errors ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+        a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        a:hover {
+            text-decoration: underline;
+        }
+    </style>
+    {% if auto_refresh %}
+    <script>
+        setTimeout(function() {
+            location.reload();
+        }, 3000); // Refresh every 3 seconds
+    </script>
+    {% endif %}
+</head>
+<body>
+    <h1>Daily Close Status</h1>
+
+    <div class="status {{ run.status }}">
+        Status: {{ run.get_status_display }}
+        {% if run.is_official %}<span class="official-badge">OFFICIAL</span>{% endif %}
+    </div>
+
+    <div class="info-section">
+        <div class="info-row">
+            <span class="info-label">Portfolio:</span>
+            <span class="info-value">{{ run.portfolio.name }} - {{ run.portfolio.full_name|default:"" }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">As-of Date:</span>
+            <span class="info-value">{{ run.as_of_date }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Valuation Policy:</span>
+            <span class="info-value">{{ run.get_valuation_policy_display }}</span>
+        </div>
+        <div class="info-row">
+            <span class="info-label">Created:</span>
+            <span class="info-value">{{ run.created_at }}</span>
+        </div>
+        {% if run.total_market_value %}
+        <div class="info-row">
+            <span class="info-label">Total Market Value:</span>
+            <span class="info-value">{{ run.total_market_value }}</span>
+        </div>
+        {% endif %}
+        {% if run.position_count %}
+        <div class="info-row">
+            <span class="info-label">Position Count:</span>
+            <span class="info-value">{{ run.position_count }}</span>
+        </div>
+        {% endif %}
+        {% if run.positions_with_issues %}
+        <div class="info-row">
+            <span class="info-label">Positions with Issues:</span>
+            <span class="info-value">{{ run.positions_with_issues }}</span>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if run.log %}
+    <div class="info-section">
+        <strong>Execution Log:</strong>
+        <pre style="white-space: pre-wrap; font-family: monospace; font-size: 12px; margin-top: 10px;">{{ run.log }}</pre>
+    </div>
+    {% endif %}
+
+    {% if report %}
+    <div class="info-section">
+        <strong>Report Generated:</strong>
+        <p>
+            Status: {{ report.get_status_display }}<br>
+            Generated at: {{ report.generated_at|default:"N/A" }}
+        </p>
+        {% if report.status == "success" %}
+        <p>
+            <a href="{% url 'reports:download_report' report.id 'pdf' %}" class="button">Download PDF</a>
+            <a href="{% url 'reports:download_report' report.id 'csv' %}" class="button">Download CSV</a>
+            <a href="{% url 'reports:download_report' report.id 'excel' %}" class="button">Download Excel</a>
+        </p>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    {% if run.status == "success" and not run.is_official %}
+    <div class="mark-official-form">
+        <h3>Mark as Official</h3>
+        <form method="post" action="{% url 'analytics:mark_official' run.id %}">
+            {% csrf_token %}
+            <label for="reason">Reason (optional):</label>
+            <textarea name="reason" id="reason" placeholder="Optional reason for marking as official..."></textarea>
+            <button type="submit">Mark as Official</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="actions">
+        <a href="{% url 'analytics:run_daily_close' %}" class="button">Run Another Daily Close</a>
+        {% if report %}
+        <a href="{% url 'reports:reports_list' %}" class="button secondary">View All Reports</a>
+        {% endif %}
+    </div>
+</body>
+</html>
+

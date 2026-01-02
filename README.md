@@ -21,7 +21,18 @@ Hedgemind is a **decision intelligence platform** for institutional users—asse
 
 The project has a solid foundation with multi-tenant architecture, comprehensive reference data models, portfolio management infrastructure, valuation engine, exposure computation, and report generation. The platform now supports end-to-end portfolio analytics: valuation → exposure computation → report generation with PDF, CSV, and Excel outputs.
 
-### ✅ Implemented
+**Key Features Implemented:**
+- ✅ Multi-tenant organization scoping
+- ✅ Comprehensive reference data models (instruments, issuers, market data)
+- ✅ Portfolio ingestion with flexible column mapping
+- ✅ Valuation engine with policy support
+- ✅ Exposure computation (currency, issuer, country, instrument group/type)
+- ✅ Report generation (PDF, CSV, Excel)
+- ✅ Excel import templates and documentation
+- ✅ Django admin interfaces for all models
+- ✅ Management commands for data import and processing
+
+### ✁EImplemented
 
 #### Core Infrastructure
 - **Multi-tenant architecture**: Organization-based data isolation
@@ -35,13 +46,13 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 
 #### Django Apps - Implemented Features
 
-- `apps/organizations` - Multi-tenant organization management ✅
+- `apps/organizations` - Multi-tenant organization management ✁E
   - Organization model with base currency support
   - OrganizationMember with role-based access (ADMIN, ANALYST, VIEWER)
   - Organization switching API endpoints
   - Organization context middleware
 
-- `apps/reference_data` - Reference data management ✅
+- `apps/reference_data` - Reference data management ✁E
   - **Models**: Comprehensive reference data models organized by domain
     - `Instrument`, `InstrumentType`, `InstrumentGroup` (organization-scoped)
     - `Issuer`, `IssuerRating` (organization-scoped issuers)
@@ -65,7 +76,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - **Services**: Import and canonicalization services for each data type
   - **Testing**: Comprehensive test coverage (327+ test functions)
 
-- `apps/portfolios` - Portfolio management ✅
+- `apps/portfolios` - Portfolio management ✁E
   - **Models**:
     - `PortfolioGroup` - Simple one-level grouping for portfolios
     - `Portfolio` - Investment portfolio container with base currency
@@ -86,12 +97,15 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
       - Provenance tracking (links snapshots to imports)
       - Flexible mapping (price OR market_value, validation ensures one exists)
       - Bulk operations for performance
+      - **No instrument auto-creation**: Missing instruments result in reference_data errors
+  - **Management Commands**:
+    - `import_portfolio` - Execute import on existing PortfolioImport record
   - All models are organization-scoped using `OrganizationOwnedModel`
   - **Testing**: Model tests implemented
 
-- `apps/etl` - ETL pipelines and orchestration ✅
+- `apps/etl` - ETL pipelines and orchestration ✁E
   - **Daily Close Orchestration**:
-    - `run_portfolio_daily_close()` - Full orchestration: valuation → exposure → report
+    - `run_portfolio_daily_close()` - Full orchestration: valuation ↁEexposure ↁEreport
     - `run_daily_close()` - Market data ETL orchestration
     - Management command: `run_portfolio_daily_close` for triggering daily close
   - **Celery Tasks** (`apps/etl/tasks.py`):
@@ -100,12 +114,12 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
   - Market data FX daily pipeline (placeholder)
   - Prices daily pipeline (placeholder)
 
-- `apps/audit` - Audit logging ✅
+- `apps/audit` - Audit logging ✁E
   - AuditEvent model implemented
   - Immutable audit log structure
 
 - `apps/accounts` - User account management 🚧 (scaffolded)
-- `apps/analytics` - Analytics engine ✅
+- `apps/analytics` - Analytics engine ✁E
   - **Models**:
     - `ValuationRun` - Portfolio valuation runs with policy support
     - `ValuationPositionResult` - Computed valuation results per position
@@ -117,7 +131,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
     - `run_context_id` for execution context tracking (batch operations, audit trail)
     - Stored aggregates (industry standard): total_market_value, position_count, data quality counts
     - Exposure computation and storage (stored aggregates pattern for fast queries)
-    - Status tracking (PENDING → RUNNING → SUCCESS/FAILED)
+    - Status tracking (PENDING ↁERUNNING ↁESUCCESS/FAILED)
     - Execution logging
   - **Engine** (`apps/analytics/engine/`):
     - `valuation.py` - Pure Python valuation computation functions
@@ -139,7 +153,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
       - Engine functions perform all computation (pure functions, testable without Django)
       - Follows data engineering best practices (industry standard)
   - **Testing**: Comprehensive test coverage (800+ lines)
-- `apps/reports` - Report generation ✅
+- `apps/reports` - Report generation ✁E
   - **Models**:
     - `ReportTemplate` - Report template definitions (portfolio overview v1)
     - `Report` - Generated report instances with PDF, CSV, Excel outputs
@@ -155,6 +169,24 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
     - Multi-format output (PDF, CSV, Excel)
     - Portfolio overview with exposures, concentration, data quality
     - Board-ready PDF reports
+
+#### Django Admin Interfaces ✁E
+
+All models have comprehensive Django admin interfaces configured:
+
+- `apps/organizations/admin.py` - Organization and OrganizationMember management
+- `apps/reference_data/admin.py` - Reference data models (instruments, issuers, market data)
+- `apps/portfolios/admin.py` - Portfolio, PortfolioImport, PortfolioImportError management
+- `apps/analytics/admin.py` - ValuationRun, ValuationPositionResult, ExposureResult management
+- `apps/reports/admin.py` - ReportTemplate and Report management
+- `apps/audit/admin.py` - AuditEvent viewing (read-only for immutability)
+- `apps/etl/admin.py` - ETL model management
+
+All admin interfaces support:
+- Organization filtering for multi-tenant models
+- Search and filtering capabilities
+- Read-only interfaces for immutable models (AuditEvent)
+- Detailed error viewing for PortfolioImportError
 
 #### Libraries (`libs/`)
 - `libs/models.py` - `OrganizationOwnedModel` mixin for automatic organization scoping
@@ -178,9 +210,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 ### 🚧 In Progress / Planned
 
 - **Stress Scenarios**: Deterministic stress scenario engine
-- **Portfolio Ingestion Management Command**: CLI command for triggering imports (service is implemented)
 - **Portfolio Ingestion UI**: Web interface for uploading and managing imports (backend service ready)
-- **Admin Interfaces**: Django admin configuration for all models
 - **Reference Data UI**: Web interfaces for managing reference data
 - **ETL Pipeline Implementation**: Complete market data daily pipelines (FX, prices)
 - **Duration/Rate Sensitivity**: Fixed income analytics (duration, DV01)
@@ -200,39 +230,39 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
 ### High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                   Web App (Django)                       │
-│  - Auth, orgs, permissions                               │
-│  - Uploads, portfolio views, reports listing            │
-│  - Admin + configuration                                 │
-└─────────────────────────────────────────────────────────┘
-                          │
+┌─────────────────────────────────────────────────────────━E
+━E                  Web App (Django)                       ━E
+━E - Auth, orgs, permissions                               ━E
+━E - Uploads, portfolio views, reports listing            ━E
+━E - Admin + configuration                                 ━E
+└─────────────────────────────────────────────────────────━E
+                          ━E
                           ▼
-┌─────────────────────────────────────────────────────────┐
-│            Analytics Engine (Python Module)              │
-│  - Pure-Python functions/classes                        │
-│  - Valuation computation (valuation.py)                │
-│  - Aggregation functions (aggregation.py)               │
-│  - Exposure computation (exposures.py)                  │
-│  - Normalized holdings + market data → exposures        │
-│  - Produces report schema (JSON)                        │
-│  - Separation of concerns: computation separate from    │
-│    data models (data engineering best practice)        │
-└─────────────────────────────────────────────────────────┘
-                          │
+┌─────────────────────────────────────────────────────────━E
+━E           Analytics Engine (Python Module)              ━E
+━E - Pure-Python functions/classes                        ━E
+━E - Valuation computation (valuation.py)                ━E
+━E - Aggregation functions (aggregation.py)               ━E
+━E - Exposure computation (exposures.py)                  ━E
+━E - Normalized holdings + market data ↁEexposures        ━E
+━E - Produces report schema (JSON)                        ━E
+━E - Separation of concerns: computation separate from    ━E
+━E   data models (data engineering best practice)        ━E
+└─────────────────────────────────────────────────────────━E
+                          ━E
                           ▼
-┌─────────────────────────────────────────────────────────┐
-│              Async Jobs (Celery)                         │
-│  - File parsing, valuation, scenarios, PDF generation   │
-└─────────────────────────────────────────────────────────┘
-                          │
-        ┌─────────────────┼─────────────────┐
+┌─────────────────────────────────────────────────────────━E
+━E             Async Jobs (Celery)                         ━E
+━E - File parsing, valuation, scenarios, PDF generation   ━E
+└─────────────────────────────────────────────────────────━E
+                          ━E
+        ┌─────────────────┼─────────────────━E
         ▼                 ▼                 ▼
-┌──────────────┐  ┌──────────────┐  ┌──────────────┐
-│ PostgreSQL   │  │  Redis       │  │  S3 Storage  │
-│ (Source of   │  │  (Cache +    │  │  (Files +    │
-│  Truth)      │  │   Queue)     │  │   PDFs)      │
-└──────────────┘  └──────────────┘  └──────────────┘
+┌──────────────━E ┌──────────────━E ┌──────────────━E
+━EPostgreSQL   ━E ━E Redis       ━E ━E S3 Storage  ━E
+━E(Source of   ━E ━E (Cache +    ━E ━E (Files +    ━E
+━E Truth)      ━E ━E  Queue)     ━E ━E  PDFs)      ━E
+└──────────────━E └──────────────━E └──────────────━E
 ```
 
 ### Multi-Tenancy
@@ -249,7 +279,7 @@ See `libs/README_ORGANIZATION_OWNED_MODEL.md` for detailed usage guide.
 ### Data Flow
 
 **Reference Data Import** (Implemented):
-1. **Import**: Admin uses management commands to import Excel files → creates observations/import records
+1. **Import**: Admin uses management commands to import Excel files ↁEcreates observations/import records
 2. **Canonicalize**: Run canonicalization to create canonical price/rate/curve records
 3. **Storage**: Data stored in PostgreSQL with organization scoping where applicable
 
@@ -259,12 +289,98 @@ See `libs/README_ORGANIZATION_OWNED_MODEL.md` for detailed usage guide.
    - Call `import_portfolio_from_file()` service function
    - Service validates, maps columns, creates `PositionSnapshot` records
    - Row-level errors tracked in `PortfolioImportError` records
-   - Status tracking: PENDING → PARSING → VALIDATING → SUCCESS/FAILED/PARTIAL
+   - Status tracking: PENDING ↁEPARSING ↁEVALIDATING ↁESUCCESS/FAILED/PARTIAL
 2. **Analytics Run** (implemented): 
-   - Create `ValuationRun` → execute valuation → compute and store exposures
-   - `run_portfolio_daily_close()` orchestrates: valuation → exposure → report
-3. **Report** (implemented): Render PDF/CSV/Excel from computed results → persist `Report` record
-4. **UI**: User views portfolio → downloads PDF/CSV/Excel (backend ready, UI to be implemented)
+   - Create `ValuationRun` ↁEexecute valuation ↁEcompute and store exposures
+   - `run_portfolio_daily_close()` orchestrates: valuation ↁEexposure ↁEreport
+3. **Report** (implemented): Render PDF/CSV/Excel from computed results ↁEpersist `Report` record
+4. **UI**: User views portfolio ↁEdownloads PDF/CSV/Excel (backend ready, UI to be implemented)
+
+## Data Loading Flow & Dependencies
+
+### System Initialization (One-Time, After Migrations)
+
+**Step 1:** Load global reference data taxonomy
+```bash
+python manage.py load_reference_data
+```
+**Expected Output:** "Completed loading reference data (global reference data)"
+**What it does:** Creates InstrumentGroup and InstrumentType records (shared across all orgs)
+
+**Step 2:** Sync market data sources
+```bash
+python manage.py sync_market_data_sources
+```
+**Expected Output:** "Completed syncing market data sources: X created, Y updated"
+**What it does:** Creates baseline MarketDataSource records (BVMAC, BEAC, MANUAL, CUSTODIAN, etc.)
+
+**Common Issues:**
+- If command fails: Check database connection and migrations are applied
+- If sources already exist: Command is idempotent, safe to re-run
+
+### Organization Setup (Per Organization)
+
+**Step 1:** Create organization (via admin or API)
+
+**Step 2:** Load organization-scoped reference data:
+```bash
+# Load issuers first
+python manage.py import_issuers_excel --file issuers.xlsx --org-id 1
+
+# Then load instruments
+python manage.py import_instruments_excel --file instruments.xlsx --org-id 1
+```
+
+**Prerequisites:**
+- Global reference data must be loaded (InstrumentGroup, InstrumentType)
+- Issuers must exist before importing instruments
+
+### Before Portfolio Import (Required Checks)
+
+**Step 1:** Preflight validation
+```bash
+python manage.py preflight_portfolio_import --portfolio-import-id 123 --org-id 1
+```
+**Expected Output:** Validation report showing missing items
+**What it checks:**
+- Missing instruments (by identifier)
+- Missing FX rates (currencies → portfolio base currency)
+- Missing prices (if valuation policy requires)
+- Missing yield curves (if bond pricing needed)
+
+**Step 2:** If instruments missing, export and fix:
+```bash
+# Export missing instruments
+python manage.py export_missing_instruments --portfolio-import-id 123 --output-file missing_instruments.csv --org-id 1
+
+# Fill missing data in CSV, then import
+python manage.py import_instruments_excel --file missing_instruments_filled.csv --org-id 1
+
+# Re-run preflight to verify
+python manage.py preflight_portfolio_import --portfolio-import-id 123 --org-id 1
+```
+
+**Step 3:** Import portfolio positions
+```bash
+python manage.py import_portfolio --portfolio-import-id 123 --org-id 1 --actor-id 5
+```
+
+### Common Failure Modes
+
+**Error: "Instrument 'CG123' not found"**
+- **Cause:** Instrument doesn't exist in reference data
+- **Resolution:** Export missing instruments, create instruments, retry import
+
+**Error: "Missing FX rate for USD/XAF"**
+- **Cause:** FX rate not loaded for as_of_date
+- **Resolution:** Import FX rates for required date, then retry
+
+**Error: "Duplicate import detected"**
+- **Cause:** Same file already imported successfully
+- **Resolution:** Check if import is intentional, or use different file/as_of_date
+
+**Preflight shows missing instruments:**
+- **Resolution:** Use export_missing_instruments command, fill CSV template, import instruments, re-run preflight
 
 ## Getting Started
 
@@ -375,9 +491,78 @@ python manage.py load_reference_data  # Loads all initial reference data
 # Canonicalize price observations
 python manage.py canonicalize_prices --as-of 2024-01-01
 
-# Run portfolio daily close (valuation → exposure → report)
+# Import portfolio positions (requires PortfolioImport record to exist)
+python manage.py import_portfolio --portfolio-import-id 123 --org-id 1 --actor-id 5
+
+# Run portfolio daily close (valuation ↁEexposure ↁEreport)
 python manage.py run_portfolio_daily_close --portfolio-id 1 --as-of 2025-01-15 --org-id 1
 ```
+
+### Reference Data Management
+
+The platform provides comprehensive tools for managing reference data (instruments, issuers, market data) through both CLI commands and Django admin interfaces.
+
+#### Quick Start
+
+**1. Set up a new organization:**
+```bash
+./scripts/example_setup_new_organization.sh 1
+```
+
+**2. Import issuers:**
+```bash
+./scripts/example_import_issuers.sh
+```
+
+**3. Import instruments:**
+```bash
+./scripts/example_import_instruments.sh
+```
+
+**4. Import market data:**
+```bash
+./scripts/example_import_market_data.sh 2025-01-31
+```
+
+#### Documentation
+
+- **Comprehensive Command Reference**: See [`docs/REFERENCE_DATA_COMMANDS.md`](docs/REFERENCE_DATA_COMMANDS.md) for detailed documentation of all reference data commands, including:
+  - Complete command reference with all arguments
+  - Excel file format specifications
+  - Common workflows and examples
+  - Troubleshooting guide
+  - Best practices
+
+- **Excel Templates**: Standardized templates are available in [`docs/templates/`](docs/templates/):
+  - `portfolio_holdings_template.xlsx` - Portfolio holdings import
+  - `instrument_master_template.xlsx` - Instrument master data
+  - `issuer_master_template.xlsx` - Issuer master data
+  - See [`docs/templates/README.md`](docs/templates/README.md) for template usage and field descriptions
+
+- **Example Scripts**: Executable example scripts in [`scripts/`](scripts/):
+  - `example_import_issuers.sh` - Import issuers workflow
+  - `example_import_instruments.sh` - Import instruments workflow
+  - `example_import_market_data.sh` - Daily market data import
+  - `example_setup_new_organization.sh` - Complete new organization setup
+
+#### Django Admin Enhancements
+
+The Django admin interface has been enhanced for reference data management:
+
+- **Import Status Tracking**: All import models (InstrumentPriceImport, FXRateImport, YieldCurveImport, MarketIndexImport) now display:
+  - Color-coded status indicators
+  - Observation creation/update metrics
+  - Error message display with formatting
+  - Completion timestamps
+
+- **Admin Actions**:
+  - Export errors to CSV (for all import models)
+  - Mark imports as processed (manual status update)
+  - Export instruments/issuers to Excel template format
+
+- **Better Error Display**: Full error messages with proper formatting in detail views
+
+**Note**: Bulk import via admin (file upload) requires a custom admin view, which can be added if needed. For now, use CLI commands for bulk imports (see example scripts above).
 
 ### Running Tests
 
@@ -397,61 +582,79 @@ pytest tests/organizations/test_models.py
 ```
 hedgemind/
 ├── apps/                    # Django applications
-│   ├── accounts/           # User accounts management (scaffolded)
-│   ├── analytics/          # Analytics and metrics ✅
-│   │   ├── engine/         # Analytics engine (pure Python)
-│   │   │   ├── valuation.py    # Valuation computation
-│   │   │   ├── aggregation.py # Aggregation functions
-│   │   │   └── exposures.py    # Exposure computation
-│   ├── audit/              # Audit logging ✅
-│   ├── etl/                # ETL pipelines and orchestration ✅
-│   │   ├── orchestration/  # Daily close orchestration
-│   │   │   └── daily_close.py  # Portfolio daily close orchestration
-│   │   ├── management/     # Management commands
-│   │   │   └── commands/   # ETL management commands
-│   │   └── pipelines/      # Individual ETL pipelines
-│   ├── organizations/      # Multi-tenant organization management ✅
-│   ├── portfolios/         # Portfolio management ✅
-│   │   └── ingestion/      # Portfolio ingestion logic ✅
-│   │       ├── import_excel.py  # Excel/CSV import service
-│   │       ├── mapping.py       # Column mapping service
-│   │       ├── validation.py    # Validation logic
-│   │       └── utils.py         # Utility functions
-│   ├── reference_data/     # Reference data (securities, market data) ✅
-│   │   ├── models/         # Model definitions by domain
-│   │   ├── management/     # Management commands for data import
-│   │   │   └── commands/   # Excel import commands
-│   │   ├── providers/      # Market data providers
-│   │   └── services/       # Reference data services (import, canonicalize)
-│   └── reports/            # Report generation ✅
-│       ├── renderers/      # Report renderers (PDF, CSV, Excel)
-│       │   └── portfolio_report.py  # Portfolio report generation
-│       └── templates/      # Report templates (HTML)
-│           └── reports/    # Report template files
+━E  ├── accounts/           # User accounts management (scaffolded)
+━E  ├── analytics/          # Analytics and metrics ✁E
+━E  ━E  ├── engine/         # Analytics engine (pure Python)
+━E  ━E  ━E  ├── valuation.py    # Valuation computation
+━E  ━E  ━E  ├── aggregation.py # Aggregation functions
+━E  ━E  ━E  └── exposures.py    # Exposure computation
+━E  ├── audit/              # Audit logging ✁E
+━E  ├── etl/                # ETL pipelines and orchestration ✁E
+━E  ━E  ├── orchestration/  # Daily close orchestration
+━E  ━E  ━E  └── daily_close.py  # Portfolio daily close orchestration
+━E  ━E  ├── management/     # Management commands
+━E  ━E  ━E  └── commands/   # ETL management commands
+━E  ━E  └── pipelines/      # Individual ETL pipelines
+━E  ├── organizations/      # Multi-tenant organization management ✁E
+━E  ├── portfolios/         # Portfolio management ✁E
+━E  ━E  └── ingestion/      # Portfolio ingestion logic ✁E
+━E  ━E      ├── import_excel.py  # Excel/CSV import service
+━E  ━E      ├── mapping.py       # Column mapping service
+━E  ━E      ├── validation.py    # Validation logic
+━E  ━E      └── utils.py         # Utility functions
+━E  ├── reference_data/     # Reference data (securities, market data) ✁E
+━E  ━E  ├── models/         # Model definitions by domain
+━E  ━E  ├── management/     # Management commands for data import
+━E  ━E  ━E  └── commands/   # Excel import commands
+━E  ━E  ├── providers/      # Market data providers
+━E  ━E  └── services/       # Reference data services (import, canonicalize)
+━E  └── reports/            # Report generation ✁E
+━E      ├── renderers/      # Report renderers (PDF, CSV, Excel)
+━E      ━E  └── portfolio_report.py  # Portfolio report generation
+━E      └── templates/      # Report templates (HTML)
+━E          └── reports/    # Report template files
 ├── config/                 # Django project configuration
-│   ├── settings/           # Environment-specific settings
-│   │   ├── base.py         # Base settings
-│   │   ├── dev.py          # Development overrides
-│   │   ├── prod.py         # Production overrides
-│   │   └── test.py         # Test-specific settings
-│   ├── celery.py           # Celery configuration
-│   └── urls.py             # Root URL configuration
+━E  ├── settings/           # Environment-specific settings
+━E  ━E  ├── base.py         # Base settings
+━E  ━E  ├── dev.py          # Development overrides
+━E  ━E  ├── prod.py         # Production overrides
+━E  ━E  └── test.py         # Test-specific settings
+━E  ├── celery.py           # Celery configuration
+━E  └── urls.py             # Root URL configuration
 ├── libs/                   # Reusable libraries and utilities
-│   ├── models.py           # Base model mixins (OrganizationOwnedModel)
-│   ├── tenant_context.py   # Organization context management
-│   ├── organization_query.py  # Organization query helpers
-│   ├── storage.py          # Storage utilities
-│   └── logging.py          # Logging configuration
+━E  ├── models.py           # Base model mixins (OrganizationOwnedModel)
+━E  ├── tenant_context.py   # Organization context management
+━E  ├── organization_query.py  # Organization query helpers
+━E  ├── storage.py          # Storage utilities
+━E  └── logging.py          # Logging configuration
 ├── tests/                  # Centralized test suite
-│   ├── conftest.py         # Shared pytest fixtures
-│   ├── factories.py        # Factory Boy factories
-│   └── [app_name]/         # App-specific tests
+━E  ├── conftest.py         # Shared pytest fixtures
+━E  ├── factories.py        # Factory Boy factories
+━E  └── [app_name]/         # App-specific tests
 ├── scripts/                # Utility scripts
+│   └── create_templates.py # Script to generate Excel templates
+├── docs/                   # Documentation
+│   └── templates/          # Excel import templates
+│       ├── portfolio_holdings_template.xlsx
+│       ├── instrument_master_template.xlsx
+│       ├── issuer_master_template.xlsx
+│       └── README.md       # Template documentation
 ├── bugs/                   # Bug tracking documentation
 ├── .cursor/rules/          # Development rules and project definition
 ├── manage.py               # Django management script
 └── pyproject.toml          # Python project configuration
 ```
+
+## Data Pipelines & Workflows
+
+For detailed documentation on how data flows through the system, see [`docs/DATA_PIPELINES_WORKFLOW.md`](docs/DATA_PIPELINES_WORKFLOW.md). This document covers:
+
+- System initialization and organization setup
+- Market data pipeline (observations → canonicalization)
+- Portfolio import pipeline (preflight → import → validation)
+- Analytics pipeline (valuation → exposures → reports)
+- Organization-specific source priority overrides
+- Data dependencies and workflow examples
 
 ## Key Concepts
 
@@ -610,10 +813,10 @@ run.mark_as_official(reason="Approved by portfolio manager", actor=user)
 **Purpose**: Track execution state through lifecycle.
 
 **ValuationRun Status Flow**:
-- `PENDING` → `RUNNING` → `SUCCESS` / `FAILED`
+- `PENDING` ↁE`RUNNING` ↁE`SUCCESS` / `FAILED`
 
 **PortfolioImport Status Flow**:
-- `PENDING` → `PARSING` → `SUCCESS` / `FAILED` / `PARTIAL`
+- `PENDING` ↁE`PARSING` ↁE`SUCCESS` / `FAILED` / `PARTIAL`
 
 **Why Important**: 
 - **User Experience**: Clear feedback on operation progress
@@ -711,7 +914,8 @@ The platform includes comprehensive reference data models organized by domain:
 - `IssuerRating` - Credit ratings for issuers
 
 **Market Data**:
-- `MarketDataSource` - Source tracking for market data
+- `MarketDataSource` - Source tracking for market data (global priority hierarchy)
+- `MarketDataSourcePriority` - Organization-specific source priority overrides (allows orgs to customize source selection)
 - `InstrumentPrice` / `InstrumentPriceObservation` - Security prices (with import tracking)
 - `FXRate` / `FXRateObservation` - Foreign exchange rates (with import tracking)
 - `YieldCurve` / `YieldCurvePoint` / `YieldCurvePointObservation` - Yield curve data (with import tracking)
@@ -726,10 +930,11 @@ All market data types support import tracking with `*Import` models that track:
 - Selection reasons (for rate/price selection)
 
 **Canonicalization**:
-Market data follows an observation → canonical pattern:
+Market data follows an observation ↁEcanonical pattern:
 - Raw observations are imported and stored
 - Canonicalization process creates consolidated records for a given date
 - Supports multiple data sources with selection logic
+- **Organization-specific priority overrides**: Organizations can override global source priorities via `MarketDataSourcePriority` model, allowing custom source selection policies per organization
 
 ### Portfolio Models
 
@@ -741,7 +946,7 @@ The platform includes comprehensive portfolio management models:
 
 **Portfolio Import & Tracking**:
 - `PortfolioImport` - Tracks file uploads and import status
-  - Status flow: `PENDING` → `PARSING` → `VALIDATING` → `SUCCESS` / `FAILED` / `PARTIAL`
+  - Status flow: `PENDING` ↁE`PARSING` ↁE`VALIDATING` ↁE`SUCCESS` / `FAILED` / `PARTIAL`
   - Stores mapping configuration, row counts, error summaries
   - Idempotency via `inputs_hash` (prevents duplicate imports)
 - `PortfolioImportError` - Row-level error tracking
@@ -759,15 +964,25 @@ The platform includes comprehensive portfolio management models:
 
 **Portfolio Ingestion Workflow**:
 1. Create `PortfolioImport` record with uploaded file (CSV/Excel)
-2. Call `import_portfolio_from_file(portfolio_import_id)` service function
+2. Call `import_portfolio_from_file(portfolio_import_id)` service function OR use management command `import_portfolio`
 3. Service auto-detects column mapping or uses explicit mapping
 4. Each row is validated and instrument is resolved (by ISIN or ticker)
-5. Valid rows create `PositionSnapshot` records (bulk insert for performance)
-6. Invalid rows create `PortfolioImportError` records with detailed error info
-7. `PortfolioImport` status updated based on results (SUCCESS/FAILED/PARTIAL)
-8. Duplicate snapshots are prevented (immutability enforced)
+5. **Missing instruments create reference_data errors** (instruments are NOT auto-created)
+6. Valid rows create `PositionSnapshot` records (bulk insert for performance)
+7. Invalid rows create `PortfolioImportError` records with detailed error info
+8. `PortfolioImport` status updated based on results (SUCCESS/FAILED/PARTIAL)
+9. Duplicate snapshots are prevented (immutability enforced)
 
 **Example Usage**:
+
+**Via Management Command:**
+```bash
+# Create PortfolioImport record first (via UI or programmatically)
+# Then execute import:
+python manage.py import_portfolio --portfolio-import-id 123 --org-id 1 --actor-id 5
+```
+
+**Via Python Service:**
 ```python
 from apps.portfolios.models import Portfolio, PortfolioImport
 from apps.portfolios.ingestion.import_excel import import_portfolio_from_file
@@ -794,6 +1009,8 @@ with organization_context(org_id=1):
     for error in errors:
         print(f"Row {error.row_number}: {error.error_message}")
 ```
+
+**Note:** Instruments must exist in reference data before importing holdings. Missing instruments will result in `reference_data` error type, not auto-creation.
 
 ## Development Guidelines
 
@@ -838,6 +1055,52 @@ See `.cursor/rules/project_definition.mdc` for:
 - Monte Carlo simulations
 - Complex VaR models
 - Mobile-first UX
+
+## File Upload Guidelines
+
+### Excel Templates
+
+Standardized Excel templates are available in `docs/templates/` to guide data imports:
+
+- **`portfolio_holdings_template.xlsx`** - Template for portfolio position imports
+  - Includes canonical column names and example data
+  - Instructions sheet with field descriptions
+  - Recommended for consistent imports
+
+- **`instrument_master_template.xlsx`** - Template for instrument reference data
+  - All required and optional fields documented
+  - Example data for bonds and equities
+
+- **`issuer_master_template.xlsx`** - Template for issuer reference data
+  - Required fields: name, short_name, country, issuer_group
+  - Example data included
+
+**Note:** Templates are guidance only - the system's flexible column mapping accepts variations in column names. However, using templates ensures consistency and reduces errors.
+
+For detailed template documentation, field descriptions, and import instructions, see [`docs/templates/README.md`](docs/templates/README.md).
+
+### File Naming Convention
+
+While not strictly enforced, we recommend following this naming convention for uploaded portfolio files:
+
+**Format:** `{org_code}_{portfolio_code}_holdings_{YYYYMMDD}_{source}.xlsx`
+
+**Example:** `CEMACBANK_TREASURY_holdings_20250131_custodian.xlsx`
+
+**Components:**
+- `org_code`: Organization code or abbreviation
+- `portfolio_code`: Portfolio code or name abbreviation
+- `holdings`: Fixed identifier for holdings files
+- `YYYYMMDD`: As-of date in ISO format
+- `source`: Data source (`custodian`, `internal`, `manual`, `external`, `market`)
+
+**Benefits:**
+- Human-readable identification without opening files
+- Matches audit log patterns for easier reconciliation
+- Industry-standard practice (aligns with Aladdin, Bloomberg PORT patterns)
+- Easier file management and version control
+
+**Note:** The system accepts any filename - this convention is recommended for operational efficiency and audit trail clarity.
 
 ## Contributing
 

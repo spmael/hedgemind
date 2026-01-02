@@ -5,7 +5,7 @@ This package contains all reference data models organized by domain:
 - choices: TextChoices classes used across models
 - issuers: Issuer and IssuerRating models
 - instruments: Instrument, InstrumentGroup, InstrumentType models
-- market_data: MarketDataSource model
+- market_data: MarketDataSource and MarketDataSourcePriority models
 - prices: InstrumentPrice, InstrumentPriceObservation, and InstrumentPriceImport models
 - yield_curves: YieldCurve, YieldCurvePoint, and related models
 - fx_rates: FXRate, FXRateObservation, and FXRateImport models
@@ -34,7 +34,10 @@ from apps.reference_data.models.instruments import (
     InstrumentType,
 )
 from apps.reference_data.models.issuers import Issuer, IssuerRating
-from apps.reference_data.models.market_data import MarketDataSource
+from apps.reference_data.models.market_data import (
+    MarketDataSource,
+    MarketDataSourcePriority,
+)
 from apps.reference_data.models.prices import (
     InstrumentPrice,
     InstrumentPriceImport,
@@ -62,6 +65,7 @@ __all__ = [
     "InstrumentType",
     # Market Data
     "MarketDataSource",
+    "MarketDataSourcePriority",
     # Prices
     "InstrumentPrice",
     "InstrumentPriceImport",
