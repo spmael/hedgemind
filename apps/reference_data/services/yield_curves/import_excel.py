@@ -159,8 +159,15 @@ def _import_yield_curve_excel(
             f"Found columns: {list(df.columns)}"
         )
 
-    # Normalize date column
-    df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
+    # Normalize date column - handle DD/MM/YYYY format explicitly
+    # Try parsing with dayfirst=True for DD/MM/YYYY format (common in BEAC data)
+    try:
+        df[date_column] = pd.to_datetime(
+            df[date_column], errors="coerce", dayfirst=True
+        )
+    except Exception:
+        # Fallback to default parsing if dayfirst fails
+        df[date_column] = pd.to_datetime(df[date_column], errors="coerce")
     df = df.dropna(subset=[date_column])  # Remove rows with invalid dates
 
     created = 0

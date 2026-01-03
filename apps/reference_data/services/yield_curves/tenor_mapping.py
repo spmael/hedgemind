@@ -33,6 +33,7 @@ _TENOR_DAYS_MAP: dict[str, int] = {
     "9M": 270,  # 9 months
     "10M": 300,  # 10 months
     "11M": 330,  # 11 months
+    "12M": 365,  # 12 months (1 year)
     # Medium term
     "1Y": 365,  # 1 year
     "18M": 547,  # 18 months (approx)

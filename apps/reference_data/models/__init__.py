@@ -48,6 +48,7 @@ from apps.reference_data.models.yield_curves import (
     YieldCurveImport,
     YieldCurvePoint,
     YieldCurvePointObservation,
+    YieldCurveStressProfile,
 )
 
 __all__ = [
@@ -76,6 +77,7 @@ __all__ = [
     "YieldCurveImport",
     "YieldCurvePoint",
     "YieldCurvePointObservation",
+    "YieldCurveStressProfile",
     # FX Rates
     "FXRate",
     "FXRateImport",

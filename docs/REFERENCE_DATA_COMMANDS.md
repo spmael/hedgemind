@@ -250,25 +250,38 @@ python manage.py import_fx_rate_excel \
 
 **Description**: Import yield curve point observations from Excel file. Creates YieldCurvePointObservation records.
 
+**Prerequisites**: The YieldCurve record must exist before importing points. Use `load_yield_curves` command to create common curves, or create curves manually via Django admin.
+
 **Usage**:
 ```bash
+# One-time backfill (for historical data)
 python manage.py import_yield_curve_excel \
     --file ./data/yield_curves.xlsx \
+    --curve-name "Cameroon Government Curve" \
     --source-code BEAC \
-    --yield-curve-name XAF_SOVEREIGN \
-    --sheet YIELD_CURVES \
-    --org-id 1
+    --sheet CM \
+    --canonicalize
+
+# From import record (normal workflow)
+python manage.py import_yield_curve_excel \
+    --import-id 123 \
+    --canonicalize
 ```
 
 **Arguments**:
-- `--file` (required): Path to Excel file
-- `--source-code` (required): MarketDataSource code
-- `--yield-curve-name` (required): YieldCurve name
-- `--sheet` (optional): Sheet name (default: "YIELD_CURVES")
-- `--org-id` (required): Organization ID
+- `--import-id` (optional): YieldCurveImport ID (reads from stored file - normal workflow)
+- `--file` (optional): Path to Excel file (one-time backfill - copies to media storage)
+- `--curve-id` (optional): YieldCurve ID (required for --file mode)
+- `--curve-name` (optional): YieldCurve name (required for --file mode)
+- `--source-code` (optional): MarketDataSource code (default: BEAC, required for --file mode)
+- `--sheet` (optional): Sheet name (for --file mode)
 - `--revision` (optional): Revision number (default: 0)
 - `--actor-id` (optional): User ID for audit log
 - `--canonicalize` (optional): Run canonicalization after import
+- `--start-date` (optional): Start date for canonicalization (YYYY-MM-DD)
+- `--end-date` (optional): End date for canonicalization (YYYY-MM-DD)
+
+**Note**: Provide either `--import-id` (normal workflow) or `--file` with `--curve-id`/`--curve-name` (one-time backfill). For --file mode, provide either --curve-id or --curve-name.
 
 **Excel Format**:
 | date | tenor | rate |
@@ -276,15 +289,32 @@ python manage.py import_yield_curve_excel \
 | 2025-01-31 | 1M | 2.50 |
 | 2025-01-31 | 3M | 2.75 |
 | 2025-01-31 | 6M | 3.00 |
+| 2025-01-31 | 1Y | 3.25 |
+| 2025-01-31 | 2Y | 3.50 |
+| 2025-01-31 | 5Y | 4.00 |
+| 2025-01-31 | 10Y | 4.50 |
 
 **Example**:
 ```bash
+# One-time backfill (for files with multiple sheets, run once per sheet)
 python manage.py import_yield_curve_excel \
-    --file ./scripts/data/yield_curves_20250131.xlsx \
+    --file ./scripts/data/beac_curves.xlsx \
+    --curve-name "Cameroon Government Curve" \
     --source-code BEAC \
-    --yield-curve-name XAF_SOVEREIGN \
-    --sheet YIELD_CURVES \
-    --org-id 1 \
+    --sheet CM \
+    --canonicalize
+
+# Import other sheets
+python manage.py import_yield_curve_excel \
+    --file ./scripts/data/beac_curves.xlsx \
+    --curve-name "Gabon Government Curve" \
+    --source-code BEAC \
+    --sheet GA \
+    --canonicalize
+
+# From import record (normal workflow)
+python manage.py import_yield_curve_excel \
+    --import-id 123 \
     --canonicalize
 ```
 
@@ -429,6 +459,46 @@ python manage.py sync_market_data_sources
 
 ---
 
+#### Load Yield Curves
+
+**Command**: `load_yield_curves`
+
+**Description**: Load canonical yield curve definitions (global reference data). Creates YieldCurve records for common government curves in the CEMAC region (Cameroon, Gabon, Congo, Equatorial Guinea, Central African Republic, Chad).
+
+**Usage**:
+```bash
+python manage.py load_yield_curves
+python manage.py load_yield_curves --dry-run
+```
+
+**Arguments**:
+- `--dry-run` (optional): Show what would be created without actually creating it
+- `--actor-id` (optional): User ID for audit log
+
+**Example**:
+```bash
+python manage.py load_yield_curves
+python manage.py load_yield_curves --dry-run
+python manage.py load_yield_curves --actor-id 1
+```
+
+**Output**:
+- Creates YieldCurve records (metadata only)
+- Returns summary: created count, updated count, errors
+- Reminds users that yield curve points must be imported separately
+
+**Note**: This command only creates YieldCurve records (metadata). Yield curve points (observations) must be imported separately using the `import_yield_curve_excel` command. The curves created by this command are required before importing yield curve points.
+
+**Curves Created**:
+- Cameroon Government Curve (XAF, CM)
+- Gabon Government Curve (XAF, GA)
+- Congo Government Curve (XAF, CG)
+- Equatorial Guinea Government Curve (XAF, GQ)
+- Central African Republic Government Curve (XAF, CF)
+- Chad Government Curve (XAF, TD)
+
+---
+
 ## Common Workflows
 
 ### Workflow 1: Setting Up a New Organization
@@ -438,6 +508,7 @@ python manage.py sync_market_data_sources
 python manage.py load_instrument_groups
 python manage.py load_instrument_types
 python manage.py sync_market_data_sources
+python manage.py load_yield_curves
 ```
 
 **Step 2**: Import issuers
@@ -470,8 +541,12 @@ python manage.py import_fx_rate_excel \
 python manage.py import_yield_curve_excel \
     --file ./data/yield_curves.xlsx \
     --source-code BEAC \
-    --yield-curve-name XAF_SOVEREIGN \
+    --curve-name "Cameroon Government Curve" \
+    --sheet CM \
     --canonicalize
+```
+
+**Note**: Before importing yield curve points, ensure the yield curves exist by running `load_yield_curves` command (Step 1).
 ```
 
 ### Workflow 2: Daily Market Data Import
@@ -497,10 +572,13 @@ python manage.py import_fx_rate_excel \
 ```bash
 python manage.py import_yield_curve_excel \
     --file ./data/yield_curves_20250131.xlsx \
+    --curve-name "Cameroon Government Curve" \
     --source-code BEAC \
-    --yield-curve-name XAF_SOVEREIGN \
+    --sheet CM \
     --canonicalize
 ```
+
+**Note**: Ensure yield curves exist before importing points (use `load_yield_curves` command).
 
 **Step 4**: (Optional) Re-run canonicalization if needed
 ```bash
@@ -601,6 +679,32 @@ python manage.py import_issuers_excel \
 
 ---
 
+#### Error: "YieldCurve with name 'XXX' not found" or "YieldCurve with id=XXX not found"
+
+**Cause**: YieldCurve record doesn't exist before importing yield curve points.
+
+**Solution**: Create yield curves first:
+```bash
+# Option 1: Load canonical yield curves (recommended for common curves)
+python manage.py load_yield_curves
+
+# Option 2: Create curves manually via Django admin or shell
+python manage.py shell
+>>> from apps.reference_data.models import YieldCurve
+>>> from apps.reference_data.models.choices import YieldCurveType
+>>> YieldCurve.objects.create(
+...     name="Cameroon Government Curve",
+...     curve_type=YieldCurveType.GOVT,
+...     currency="XAF",
+...     country="CM",
+...     description="Cameroon government bond yield curve"
+... )
+```
+
+**Note**: Yield curve records (metadata) must exist before importing yield curve points (observations). Use `load_yield_curves` for common curves, or create custom curves manually.
+
+---
+
 #### Error: "Failed to read Excel file"
 
 **Cause**: File path is incorrect or file is corrupted.
@@ -658,4 +762,5 @@ python manage.py import_issuers_excel \
 - **Templates**: `docs/templates/` - Excel templates for all data types
 - **Admin Interface**: Django admin provides visual interface for viewing imports and errors
 - **API Documentation**: See main README.md for API endpoints (if available)
+- **Data Model Documentation**: See `docs/YIELD_CURVE_DATA_MODEL.md` for explanation of YieldCurvePointObservation vs YieldCurvePoint
 

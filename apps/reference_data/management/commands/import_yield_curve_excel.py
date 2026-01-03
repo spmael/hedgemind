@@ -5,14 +5,23 @@ Supports two modes:
 1. One-time backfill: --file path/to/file.xlsx (copies to media, creates import record)
 2. From import record: --import-id 123 (reads from stored file)
 
-Usage:
-    # One-time backfill (for historical data)
-    python manage.py import_yield_curve_excel \
-        --file ./scripts/data/beac_curves.xlsx \
-        --curve-name "Cameroon Government Curve" \
-        --source-code BEAC \
-        --sheet CM \
-        --canonicalize
+    Usage:
+        # One-time backfill (for historical data)
+        # For files with multiple sheets (e.g., CM, GA, CG), run once per sheet:
+        python manage.py import_yield_curve_excel \
+            --file ./scripts/data/beac_curves.xlsx \
+            --curve-name "Cameroon Government Curve" \
+            --source-code BEAC \
+            --sheet CM \
+            --canonicalize
+        
+        # Import other sheets:
+        python manage.py import_yield_curve_excel \
+            --file ./scripts/data/beac_curves.xlsx \
+            --curve-name "Gabon Government Curve" \
+            --source-code BEAC \
+            --sheet GA \
+            --canonicalize
     
     # From import record (normal workflow)
     python manage.py import_yield_curve_excel \
@@ -55,6 +64,7 @@ class Command(BaseCommand):
 
     Usage Example:
         # One-time backfill for historical data:
+        # Note: For files with multiple sheets (CM, GA, CG), run once per sheet:
         python manage.py import_yield_curve_excel \
             --file ./scripts/data/beac_curves.xlsx \
             --curve-name "Cameroon Government Curve" \

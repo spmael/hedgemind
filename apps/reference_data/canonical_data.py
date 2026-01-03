@@ -256,3 +256,72 @@ def get_canonical_group_by_code(code: str) -> InstrumentGroupDefinition | None:
         if group["code"] == code:
             return group
     return None
+
+
+class YieldCurveDefinition(TypedDict):
+    """Definition for a single yield curve."""
+
+    name: str  # Display name (e.g., 'Cameroon Government Curve')
+    curve_type: str  # Curve type code (e.g., 'govt') - value from YieldCurveType enum
+    currency: str  # Currency code (e.g., 'XAF')
+    country: str  # Country code (e.g., 'CM')
+    description: str  # Detailed description
+
+
+# Canonical Yield Curves
+# These are common government yield curves for CEMAC region countries using XAF currency.
+# Yield curve points (observations) should be imported via import_yield_curve_excel command.
+CANONICAL_YIELD_CURVES: list[YieldCurveDefinition] = [
+    {
+        "name": "Cameroon Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "CM",
+        "description": "Cameroon government bond yield curve (BEAC source)",
+    },
+    {
+        "name": "Gabon Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "GA",
+        "description": "Gabon government bond yield curve (BEAC source)",
+    },
+    {
+        "name": "Congo Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "CG",
+        "description": "Congo government bond yield curve (BEAC source)",
+    },
+    {
+        "name": "Equatorial Guinea Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "GQ",
+        "description": "Equatorial Guinea government bond yield curve (BEAC source)",
+    },
+    {
+        "name": "Central African Republic Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "CF",
+        "description": "Central African Republic government bond yield curve (BEAC source)",
+    },
+    {
+        "name": "Chad Government Curve",
+        "curve_type": "govt",
+        "currency": "XAF",
+        "country": "TD",
+        "description": "Chad government bond yield curve (BEAC source)",
+    },
+]
+
+
+def get_canonical_yield_curves() -> list[YieldCurveDefinition]:
+    """
+    Get the canonical yield curve definitions.
+
+    Returns:
+        list[YieldCurveDefinition]: List of canonical yield curve definitions.
+    """
+    return CANONICAL_YIELD_CURVES

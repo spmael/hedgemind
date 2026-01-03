@@ -72,6 +72,7 @@ The project has a solid foundation with multi-tenant architecture, comprehensive
     - `canonicalize_prices` - Canonicalize price observations
     - `load_instrument_types` - Load instrument type reference data
     - `load_instrument_groups` - Load instrument group reference data
+    - `load_yield_curves` - Load canonical yield curve definitions
     - `load_reference_data` - Load all reference data
   - **Services**: Import and canonicalization services for each data type
   - **Testing**: Comprehensive test coverage (327+ test functions)
@@ -314,6 +315,14 @@ python manage.py load_reference_data
 **Expected Output:** "Completed loading reference data (global reference data)"
 **What it does:** Creates InstrumentGroup and InstrumentType records (shared across all orgs)
 
+**Step 1b (Optional):** Load yield curve definitions
+```bash
+python manage.py load_yield_curves
+```
+**Expected Output:** "Completed loading X yield curves (global reference data)"
+**What it does:** Creates YieldCurve records for common government curves (Cameroon, Gabon, Congo, etc.)
+**Note:** Yield curves must exist before importing yield curve points. You can either use this command or create curves manually.
+
 **Step 2:** Sync market data sources
 ```bash
 python manage.py sync_market_data_sources
@@ -496,9 +505,10 @@ python manage.py import_yield_curve_excel --file path/to/file.xlsx --sheet Sheet
 python manage.py import_index_levels_excel --file path/to/file.xlsx --sheet Sheet1
 python manage.py import_index_constituents_excel --file path/to/file.xlsx --sheet Sheet1
 
-# Load initial reference data (instrument types, groups)
+# Load initial reference data (instrument types, groups, yield curves)
 python manage.py load_instrument_types
 python manage.py load_instrument_groups
+python manage.py load_yield_curves
 python manage.py load_reference_data  # Loads all initial reference data
 
 # Canonicalize price observations

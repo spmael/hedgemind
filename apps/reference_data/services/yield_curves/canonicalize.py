@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from django.db.models import Q
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.reference_data.models import (
@@ -19,6 +19,7 @@ from apps.reference_data.models import (
     YieldCurvePoint,
     YieldCurvePointObservation,
 )
+from apps.reference_data.models.market_data import MarketDataSource
 from apps.reference_data.utils.priority import get_effective_priority
 
 
@@ -44,7 +45,8 @@ def canonicalize_yield_curves(
         end_date: End date for date range (inclusive).
 
     Returns:
-        dict: Summary with keys 'created', 'updated', 'skipped', 'errors'.
+        dict: Summary with keys 'created', 'updated', 'skipped', 'errors', 'total_groups', 'curves_updated'.
+            - curves_updated: Number of curves whose last_observation_date was automatically updated.
 
     Example:
         >>> curve = YieldCurve.objects.get(name="Cameroon Government Curve")
@@ -92,6 +94,7 @@ def canonicalize_yield_curves(
     skipped = 0
     errors = []
     selected_at = timezone.now()
+    curves_processed = set()  # Track curves for staleness update
 
     # Process each group
     for (curve_id, tenor_days, obs_date), obs_list in grouped.items():
@@ -126,6 +129,24 @@ def canonicalize_yield_curves(
             # Get curve instance
             curve_instance = best_obs.curve
 
+            # Determine metadata for data-quality-aware stress narratives
+            # Explicit assumption: if publication date not provided, assume it equals curve_date
+            if best_obs.observed_at:
+                # Use observed_at date as last_published_date (when source published the data)
+                last_published_date = best_obs.observed_at.date()
+                published_date_assumed = False
+            else:
+                # Explicit assumption: published_date = curve_date when not provided
+                last_published_date = obs_date  # curve_date
+                published_date_assumed = True
+
+            # Mark as official if source is BEAC or central bank type
+            is_official = (
+                best_obs.source.code == "BEAC"
+                or best_obs.source.source_type
+                == MarketDataSource.SourceType.CENTRAL_BANK
+            )
+
             # Create or update canonical point
             canonical_point, created_flag = YieldCurvePoint.objects.update_or_create(
                 curve=curve_instance,
@@ -138,6 +159,9 @@ def canonicalize_yield_curves(
                     "observation": best_obs,
                     "selection_reason": selection_reason,
                     "selected_at": selected_at,
+                    "last_published_date": last_published_date,
+                    "published_date_assumed": published_date_assumed,
+                    "is_official": is_official,
                 },
             )
 
@@ -146,6 +170,9 @@ def canonicalize_yield_curves(
             else:
                 updated += 1
 
+            # Track curve for staleness update
+            curves_processed.add(curve_instance.id)
+
         except Exception as e:
             errors.append(
                 f"Error processing curve_id={curve_id}, tenor_days={tenor_days}, "
@@ -153,10 +180,31 @@ def canonicalize_yield_curves(
             )
             skipped += 1
 
+    # Automatically maintain curve-level staleness: update last_observation_date
+    # This is the primary indicator for curve staleness in stress narratives
+    curves_updated = 0
+    for curve_id in curves_processed:
+        try:
+            curve = YieldCurve.objects.get(id=curve_id)
+            # Get max date from all canonical points for this curve
+            max_date_result = YieldCurvePoint.objects.filter(curve=curve).aggregate(
+                max_date=Max("date")
+            )
+            max_date = max_date_result.get("max_date")
+            if max_date:
+                curve.last_observation_date = max_date
+                curve.save(update_fields=["last_observation_date", "updated_at"])
+                curves_updated += 1
+        except YieldCurve.DoesNotExist:
+            errors.append(f"Curve with id={curve_id} not found for staleness update")
+        except Exception as e:
+            errors.append(f"Error updating staleness for curve_id={curve_id}: {str(e)}")
+
     return {
         "created": created,
         "updated": updated,
         "skipped": skipped,
         "errors": errors,
         "total_groups": len(grouped),
+        "curves_updated": curves_updated,
     }

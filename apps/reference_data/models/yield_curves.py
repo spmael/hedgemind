@@ -6,6 +6,8 @@ Models for yield curves, yield curve points, and yield curve imports.
 
 from __future__ import annotations
 
+from datetime import date
+
 from django.conf import settings
 from django.db import models
 from django.utils.translation import gettext_lazy as _
@@ -30,6 +32,10 @@ class YieldCurve(models.Model):
         currency (str): Currency code for this curve.
         description (str, optional): Description of the curve.
         is_active (bool): Whether this curve is currently active.
+        last_observation_date (date, optional): Date of the most recent observation for this curve.
+            Automatically maintained during canonicalization as max(point.date) for all canonical points.
+        staleness_days (int, optional): Number of days since last_observation_date (computed property).
+            This is the primary indicator for curve staleness in stress narratives.
         created_at (datetime): When the curve record was created.
         updated_at (datetime): When the curve record was last updated.
 
@@ -66,6 +72,12 @@ class YieldCurve(models.Model):
     )
     description = models.TextField(_("Description"), blank=True, null=True)
     is_active = models.BooleanField(_("Is Active"), default=True)
+    last_observation_date = models.DateField(
+        _("Last Observation Date"),
+        blank=True,
+        null=True,
+        help_text=_("Date of the most recent observation for this curve"),
+    )
     created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
 
@@ -81,6 +93,20 @@ class YieldCurve(models.Model):
 
     def __str__(self) -> str:
         return f"{self.name} ({self.currency})"
+
+    @property
+    def staleness_days(self) -> int | None:
+        """
+        Compute staleness in days from last_observation_date.
+
+        Returns:
+            int: Number of days since last_observation_date, or None if last_observation_date is None.
+        """
+        if self.last_observation_date is None:
+            return None
+        today = date.today()
+        delta = today - self.last_observation_date
+        return delta.days
 
 
 class YieldCurvePointObservation(models.Model):
@@ -167,7 +193,9 @@ class YieldCurvePointObservation(models.Model):
     )
     observed_at = models.DateTimeField(
         _("Observed At"),
-        help_text=_("When this observation was received/recorded"),
+        blank=True,
+        null=True,
+        help_text=_("When this observation was received/recorded (optional)"),
     )
     created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
@@ -204,12 +232,18 @@ class YieldCurvePoint(models.Model):
         tenor (str): Tenor description for display (e.g., "1M", "3M", "1Y", "5Y", "10Y").
         tenor_days (int): Tenor in days (e.g., 30 for 1M, 365 for 1Y, 1825 for 5Y) - REQUIRED.
         rate (decimal): Interest rate as percentage (e.g., 5.50 for 5.5%).
-        date (date): Date for which this yield point is valid.
+        date (date): Date for which this yield point is valid (curve_date).
         chosen_source (MarketDataSource): The source that was selected for this canonical point.
         observation (YieldCurvePointObservation, optional): The observation that was selected.
         selection_reason (str): Why this point was selected (AUTO_POLICY, MANUAL_OVERRIDE, etc.).
         selected_by (User, optional): User who manually selected this point (if manual override).
         selected_at (datetime): When this point was selected/canonicalized.
+        last_published_date (date, optional): Date when the source published this data.
+            If not provided, defaults to curve_date (date) and published_date_assumed is set to True.
+        published_date_assumed (bool): Whether last_published_date was assumed to equal curve_date
+            because publication date was not provided by the source.
+        is_official (bool): Whether this is official data (e.g., from BEAC central bank).
+        staleness_days (int, optional): Number of days since last_published_date (computed property).
         created_at (datetime): When the canonical point record was created.
         updated_at (datetime): When the canonical point record was last updated.
 
@@ -221,6 +255,11 @@ class YieldCurvePoint(models.Model):
         - Rate is stored as a percentage (e.g., 5.50 for 5.5%). For calculations, divide by 100.
         - Selection algorithm: filter by (curve, tenor_days, date), keep active sources only,
           sort by source priority (asc), revision (desc), observed_at (desc), choose first.
+        - Published date assumption: If source does not provide publication date, last_published_date
+          defaults to curve_date (date) and published_date_assumed is set to True. This is explicit,
+          not implicit - the assumption is always recorded.
+        - For data quality narratives, use curve-level staleness (YieldCurve.staleness_days) as the
+          primary indicator. Point-level last_published_date is for audit/detail purposes.
 
     Example:
         >>> curve = YieldCurve.objects.get(name="XAF Government Curve")
@@ -305,6 +344,28 @@ class YieldCurvePoint(models.Model):
         _("Selected At"),
         help_text=_("When this point was selected/canonicalized"),
     )
+    last_published_date = models.DateField(
+        _("Last Published Date"),
+        blank=True,
+        null=True,
+        help_text=_(
+            "Date when the source published this data (for staleness tracking). "
+            "If not provided, defaults to curve_date (date) and published_date_assumed is set to True."
+        ),
+    )
+    published_date_assumed = models.BooleanField(
+        _("Published Date Assumed"),
+        default=False,
+        help_text=_(
+            "Whether last_published_date was assumed to equal curve_date (date) "
+            "because publication date was not provided by the source."
+        ),
+    )
+    is_official = models.BooleanField(
+        _("Is Official"),
+        default=True,
+        help_text=_("Whether this is official data (e.g., from BEAC central bank)"),
+    )
     created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
     updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
 
@@ -316,6 +377,9 @@ class YieldCurvePoint(models.Model):
             models.Index(fields=["curve", "date"]),
             models.Index(fields=["date"]),
             models.Index(fields=["chosen_source"]),
+            models.Index(fields=["last_published_date"]),
+            models.Index(fields=["is_official", "last_published_date"]),
+            models.Index(fields=["published_date_assumed"]),
         ]
         # One canonical point per curve/tenor_days/date (global, not org-scoped)
         constraints = [
@@ -328,6 +392,33 @@ class YieldCurvePoint(models.Model):
 
     def __str__(self) -> str:
         return f"{self.curve.name} {self.tenor} = {self.rate}% from {self.chosen_source.code} ({self.date})"
+
+    @property
+    def curve_date(self) -> date:
+        """
+        Alias for date field (curve_date for clarity in stress narratives).
+
+        Returns:
+            date: The date for which this yield point is valid.
+        """
+        return self.date
+
+    @property
+    def staleness_days(self) -> int | None:
+        """
+        Compute staleness in days from last_published_date.
+
+        This enables data-quality-aware stress narratives by tracking how stale
+        the curve data is when used in stress scenarios.
+
+        Returns:
+            int: Number of days since last_published_date, or None if last_published_date is None.
+        """
+        if self.last_published_date is None:
+            return None
+        today = date.today()
+        delta = today - self.last_published_date
+        return delta.days
 
 
 class YieldCurveImport(models.Model):
@@ -442,3 +533,151 @@ class YieldCurveImport(models.Model):
     def __str__(self) -> str:
         curve_name = self.curve.name if self.curve else "All Curves"
         return f"{self.source.code} - {curve_name} ({self.get_status_display()})"
+
+
+class YieldCurveStressProfile(models.Model):
+    """
+    Yield curve stress profile for stress testing.
+
+    Stores calibrated stress inputs (haircut bands) derived from historical
+    stress narratives. These profiles are used by the stress engine to apply
+    haircuts to portfolio holdings during stress scenarios.
+
+    Attributes:
+        curve: YieldCurve this profile applies to.
+        narrative: Narrative type (e.g., "gradual_deterioration", "acute_sovereign_stress").
+        period_start: Start date of historical period this profile is based on.
+        period_end: End date of historical period.
+        regime_type: Regime classification (normal, rising_stress, high_stress, etc.).
+        sovereign_haircut_pct: Haircut percentage for sovereign issuers.
+        corporate_haircut_pct: Haircut percentage for corporate issuers.
+        supra_haircut_pct: Haircut percentage for supranational issuers.
+        calibration_rationale: Explanation of how haircuts were calibrated.
+        last_observation_date: Last observation date from YieldCurve (for staleness tracking).
+        staleness_days: Computed staleness in days.
+        is_active: Whether this profile is currently active.
+
+    Note:
+        This is derived reference data, not portfolio-specific. Profiles are
+        reusable across stress runs, reports, and future pricing work.
+    """
+
+    curve = models.ForeignKey(
+        "YieldCurve",
+        on_delete=models.CASCADE,
+        related_name="stress_profiles",
+        verbose_name=_("Curve"),
+        help_text=_("Yield curve this stress profile applies to."),
+    )
+    narrative = models.CharField(
+        _("Narrative"),
+        max_length=50,
+        help_text=_(
+            "Stress narrative type (e.g., 'gradual_deterioration', 'acute_sovereign_stress')."
+        ),
+    )
+    period_start = models.DateField(
+        _("Period Start"),
+        help_text=_("Start date of historical period this profile is based on."),
+    )
+    period_end = models.DateField(
+        _("Period End"),
+        help_text=_("End date of historical period."),
+    )
+    regime_type = models.CharField(
+        _("Regime Type"),
+        max_length=30,
+        help_text=_(
+            "Regime classification (normal, rising_stress, high_stress, etc.)."
+        ),
+    )
+    sovereign_haircut_pct = models.DecimalField(
+        _("Sovereign Haircut %"),
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text=_("Haircut percentage for sovereign issuers (0-100)."),
+    )
+    corporate_haircut_pct = models.DecimalField(
+        _("Corporate Haircut %"),
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text=_("Haircut percentage for corporate issuers (0-100)."),
+    )
+    supra_haircut_pct = models.DecimalField(
+        _("Supranational Haircut %"),
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text=_("Haircut percentage for supranational issuers (0-100)."),
+    )
+    calibration_rationale = models.TextField(
+        _("Calibration Rationale"),
+        help_text=_(
+            "Explanation of how haircuts were calibrated from historical narrative."
+        ),
+    )
+    last_observation_date = models.DateField(
+        _("Last Observation Date"),
+        blank=True,
+        null=True,
+        help_text=_("Last observation date from YieldCurve (for staleness tracking)."),
+    )
+    staleness_days = models.IntegerField(
+        _("Staleness Days"),
+        blank=True,
+        null=True,
+        help_text=_("Computed staleness in days (from last_observation_date)."),
+    )
+    is_active = models.BooleanField(
+        _("Is Active"),
+        default=True,
+        help_text=_("Whether this profile is currently active for stress testing."),
+    )
+    created_at = models.DateTimeField(_("Created At"), auto_now_add=True)
+    updated_at = models.DateTimeField(_("Updated At"), auto_now=True)
+
+    class Meta:
+        verbose_name = _("Yield Curve Stress Profile")
+        verbose_name_plural = _("Yield Curve Stress Profiles")
+        ordering = ["-period_end", "-created_at"]
+        indexes = [
+            models.Index(fields=["curve", "is_active"]),
+            models.Index(fields=["narrative", "is_active"]),
+            models.Index(fields=["regime_type"]),
+            models.Index(fields=["period_start", "period_end"]),
+        ]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(
+                    sovereign_haircut_pct__gte=0, sovereign_haircut_pct__lte=100
+                ),
+                name="valid_sovereign_haircut",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    corporate_haircut_pct__gte=0, corporate_haircut_pct__lte=100
+                ),
+                name="valid_corporate_haircut",
+            ),
+            models.CheckConstraint(
+                condition=models.Q(
+                    supra_haircut_pct__gte=0, supra_haircut_pct__lte=100
+                ),
+                name="valid_supra_haircut",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.curve.name} - {self.narrative} ({self.period_start} to {self.period_end})"
+
+    def save(self, *args, **kwargs):
+        """Update staleness_days from curve's last_observation_date."""
+        if self.curve and self.curve.last_observation_date:
+            self.last_observation_date = self.curve.last_observation_date
+            if self.last_observation_date:
+                from datetime import date
+
+                self.staleness_days = (date.today() - self.last_observation_date).days
+        super().save(*args, **kwargs)

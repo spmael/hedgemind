@@ -26,10 +26,36 @@ class YieldCurveAdmin(admin.ModelAdmin):
     Provides management interface for yield curve definitions.
     """
 
-    list_display = ["name", "currency", "curve_type", "is_active", "created_at"]
+    list_display = [
+        "name",
+        "currency",
+        "curve_type",
+        "is_active",
+        "last_observation_date",
+        "staleness_days_display",
+        "created_at",
+    ]
     list_filter = ["currency", "curve_type", "is_active", "created_at"]
     search_fields = ["name", "currency"]
-    readonly_fields = ["created_at"]
+    readonly_fields = ["created_at", "staleness_days_display"]
+
+    @admin.display(description="Staleness (days)")
+    def staleness_days_display(self, obj):
+        """Display staleness in days with color coding."""
+        staleness = obj.staleness_days
+        if staleness is None:
+            return format_html('<span style="color: #808080;">N/A</span>')
+        if staleness <= 7:
+            color = "#32CD32"  # Green - fresh
+        elif staleness <= 30:
+            color = "#FFA500"  # Orange - warning
+        else:
+            color = "#DC143C"  # Red - stale
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{} days</span>',
+            color,
+            staleness,
+        )
 
 
 @admin.register(YieldCurvePointObservation)
@@ -66,7 +92,7 @@ class YieldCurvePointAdmin(admin.ModelAdmin):
     """
     Admin interface for YieldCurvePoint model.
 
-    Provides management interface for canonical yield curve points.
+    Provides management interface for canonical yield curve points with data quality metadata.
     """
 
     list_display = [
@@ -75,6 +101,10 @@ class YieldCurvePointAdmin(admin.ModelAdmin):
         "date",
         "rate",
         "chosen_source",
+        "is_official",
+        "last_published_date",
+        "published_date_assumed",
+        "staleness_days_display",
         "selection_reason",
         "created_at",
     ]
@@ -82,13 +112,34 @@ class YieldCurvePointAdmin(admin.ModelAdmin):
         "curve",
         "tenor",
         "chosen_source",
+        "is_official",
+        "published_date_assumed",
         "date",
+        "last_published_date",
         "created_at",
     ]
     search_fields = ["curve__name"]
-    readonly_fields = ["created_at"]
+    readonly_fields = ["created_at", "staleness_days_display"]
     raw_id_fields = ["curve", "chosen_source"]
     ordering = ["-date", "curve", "tenor"]
+
+    @admin.display(description="Staleness (days)")
+    def staleness_days_display(self, obj):
+        """Display staleness in days with color coding."""
+        staleness = obj.staleness_days
+        if staleness is None:
+            return format_html('<span style="color: #808080;">N/A</span>')
+        if staleness <= 7:
+            color = "#32CD32"  # Green - fresh
+        elif staleness <= 30:
+            color = "#FFA500"  # Orange - warning
+        else:
+            color = "#DC143C"  # Red - stale
+        return format_html(
+            '<span style="color: {}; font-weight: bold;">{} days</span>',
+            color,
+            staleness,
+        )
 
 
 @admin.register(YieldCurveImport)
